@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="component" method="upgrade">
+    <name>com_translations</name>
+    <creationDate>2026-05-25</creationDate>
+    <author>Joomla! Project</author>
+    <authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+    <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+    <version>__DEPLOY_VERSION__</version>
+    <description>COM_TRANSLATIONS_XML_DESCRIPTION</description>
+    <namespace path="src">Joomla\Component\Translations</namespace>
+    <install>
+        <sql>
+            <file driver="mysql" charset="utf8">sql/install.mysql.utf8.sql</file>
+            <file driver="postgresql" charset="utf8">sql/install.postgresql.utf8.sql</file>
+        </sql>
+    </install>
+    <uninstall>
+        <sql>
+            <file driver="mysql" charset="utf8">sql/uninstall.mysql.utf8.sql</file>
+            <file driver="postgresql" charset="utf8">sql/uninstall.postgresql.utf8.sql</file>
+        </sql>
+    </uninstall>
+    <administration>
+        <files folder="administrator/components/com_translations">
+            <folder>services</folder>
+            <folder>src</folder>
+            <folder>sql</folder>
+            <file>config.xml</file>
+            <file>access.xml</file>
+            <file>com_translations.xml</file>
+        </files>
+        <languages folder="administrator/components/com_translations">
+            <language tag="en-GB">language/en-GB/com_translations.sys.ini</language>
+            <language tag="en-GB">language/en-GB/com_translations.ini</language>
+        </languages>
+        <menu link="option=com_translations" img="class:translations">COM_TRANSLATIONS</menu>
+        <submenu>
+            <menu link="option=com_translations&amp;view=queue" img="class:translations">COM_TRANSLATIONS_SUBMENU_QUEUE</menu>
+        </submenu>
+    </administration>
+</extension>

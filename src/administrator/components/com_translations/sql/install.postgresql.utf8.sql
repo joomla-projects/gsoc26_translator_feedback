@@ -1,0 +1,7 @@
+--
+-- PostgreSQL schema for com_translations — DEFERRED (Week 1 is MySQL-only).
+--
+-- This placeholder exists so the manifest's <file driver="postgresql"> reference
+-- resolves and installs cleanly. Translate sql/install.mysql.utf8.sql here and
+-- verify it against a real PostgreSQL install before enabling PostgreSQL support.
+--

@@ -1,0 +1,6 @@
+--
+-- PostgreSQL uninstall for com_translations — DEFERRED (Week 1 is MySQL-only).
+--
+-- Placeholder to keep the manifest's <file driver="postgresql"> reference valid.
+-- Mirror sql/uninstall.mysql.utf8.sql here when PostgreSQL support is added.
+--
