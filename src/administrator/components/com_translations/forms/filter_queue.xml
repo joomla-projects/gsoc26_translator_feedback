@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<form>
+    <fields name="filter">
+        <field
+            name="search"
+            type="text"
+            label="COM_TRANSLATIONS_FILTER_SEARCH_LABEL"
+            description="COM_TRANSLATIONS_FILTER_SEARCH_DESC"
+            hint="JSEARCH_FILTER"
+        />
+        <field
+            name="status"
+            type="list"
+            label="COM_TRANSLATIONS_FILTER_STATUS"
+            multiple="true"
+            layout="joomla.form.field.list-fancy-select"
+            hint="COM_TRANSLATIONS_FILTER_SELECT_STATUS"
+            class="js-select-submit-on-change"
+            >
+            <option value="__none__">COM_TRANSLATIONS_STATUS_NONE</option>
+            <option value="pending">COM_TRANSLATIONS_STATUS_PENDING</option>
+            <option value="translating">COM_TRANSLATIONS_STATUS_TRANSLATING</option>
+            <option value="review">COM_TRANSLATIONS_STATUS_REVIEW</option>
+            <option value="approved">COM_TRANSLATIONS_STATUS_APPROVED</option>
+            <option value="published">COM_TRANSLATIONS_STATUS_PUBLISHED</option>
+        </field>
+        <field
+            name="languages"
+            type="targetlanguage"
+            addfieldprefix="Joomla\Component\Translations\Administrator\Field"
+            label="COM_TRANSLATIONS_FILTER_LANGUAGES"
+            multiple="true"
+            layout="joomla.form.field.list-fancy-select"
+            hint="JOPTION_SELECT_LANGUAGE"
+            class="js-select-submit-on-change"
+        />
+    </fields>
+    <fields name="list">
+        <field
+            name="fullordering"
+            type="list"
+            label="JGLOBAL_SORT_BY"
+            default="a.title ASC"
+            class="js-select-submit-on-change"
+            >
+            <option value="">JGLOBAL_SORT_BY</option>
+            <option value="a.title ASC">JGLOBAL_TITLE_ASC</option>
+            <option value="a.title DESC">JGLOBAL_TITLE_DESC</option>
+            <option value="a.id ASC">JGRID_HEADING_ID_ASC</option>
+            <option value="a.id DESC">JGRID_HEADING_ID_DESC</option>
+        </field>
+        <field
+            name="limit"
+            type="limitbox"
+            class="input-mini js-select-submit-on-change"
+            default="25"
+        />
+    </fields>
+</form>

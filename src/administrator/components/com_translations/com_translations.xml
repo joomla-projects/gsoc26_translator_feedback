@@ -24,7 +24,9 @@
         <files folder="administrator/components/com_translations">
             <folder>services</folder>
             <folder>src</folder>
+            <folder>tmpl</folder>
             <folder>sql</folder>
+            <folder>forms</folder>
             <file>config.xml</file>
             <file>access.xml</file>
             <file>com_translations.xml</file>
