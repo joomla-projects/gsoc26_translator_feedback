@@ -44,7 +44,7 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
             <thead>
                 <tr>
                     <th scope="col">
-                        <?php echo HTMLHelper::_('searchtools.sort', $this->escape($this->sourceLanguageTitle), 'a.title', $listDirn, $listOrder); ?>
+                        <?php echo HTMLHelper::_('searchtools.sort', Text::sprintf('COM_TRANSLATIONS_HEADING_SOURCE', $this->escape($this->sourceLanguageTitle)), 'a.title', $listDirn, $listOrder); ?>
                     </th>
                     <?php foreach ($this->targetLanguages as $language) : ?>
                         <th scope="col" class="text-center">
