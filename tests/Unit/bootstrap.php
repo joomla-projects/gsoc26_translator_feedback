@@ -9,7 +9,7 @@ if (!defined('_JEXEC')) {
 }
 
 if (!defined('JPATH_BASE')) {
-    define('JPATH_BASE', __DIR__ . '/..');
+    define('JPATH_BASE', __DIR__ . '/../../src');
 }
 
 if (!defined('JPATH_ROOT')) {
@@ -21,11 +21,11 @@ if (!defined('JPATH_ADMINISTRATOR')) {
 }
 
 if (!defined('JPATH_COMPONENT')) {
-    define('JPATH_COMPONENT', JPATH_ADMINISTRATOR . '/components/com_ccm');
+    define('JPATH_COMPONENT', JPATH_ADMINISTRATOR . '/components/com_translations');
 }
 
 // Composer autoloader
-require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/../../vendor/autoload.php';
 
 // Mock Joomla base classes BEFORE loading component files
 if (!class_exists('Joomla\CMS\MVC\Model\AdminModel')) {
@@ -243,7 +243,7 @@ if (!class_exists('Joomla\Tests\Unit\UnitTestCase')) {
 }
 
 // NOW load component classes after mocks are in place
-$componentSrcPath = __DIR__ . '/../src/administrator/components/com_ccm/src';
+$componentSrcPath = __DIR__ . '/../../src/administrator/components/com_ccm/src';
 $componentFiles = [
     'Model/CmsModel.php',
     'Model/MigrationModel.php',
