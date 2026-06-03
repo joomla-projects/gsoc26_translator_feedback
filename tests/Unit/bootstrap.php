@@ -243,12 +243,10 @@ if (!class_exists('Joomla\Tests\Unit\UnitTestCase')) {
 }
 
 // NOW load component classes after mocks are in place
-$componentSrcPath = __DIR__ . '/../../src/administrator/components/com_ccm/src';
+$componentSrcPath = __DIR__ . '/../../src/administrator/components/com_translations/src';
 $componentFiles = [
-    'Model/CmsModel.php',
-    'Model/MigrationModel.php',
-    'Model/CmssModel.php',
-    'Helper/MigrationHelper.php',
+    'Model/QueueModel.php',
+    'Model/EditorModel.php',
 ];
 
 foreach ($componentFiles as $file) {
