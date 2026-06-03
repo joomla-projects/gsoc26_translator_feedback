@@ -61,11 +61,18 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                         </th>
                         <?php foreach ($this->targetLanguages as $langCode => $language) : ?>
                             <?php $status = $item->states[$langCode] ?? ''; ?>
+                            <?php // Only review/approved cells open the editor(shown as a link)?>
+                            <?php $editable    = \in_array($status, ['review', 'approved'], true); ?>
+                            <?php $statusLabel = $status !== '' ? Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)) : Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?>
                             <td class="text-center">
-                                <?php if ($status !== '') : ?>
-                                    <span class="badge bg-info"><?php echo Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)); ?></span>
+                                <?php if ($editable) : ?>
+                                    <a href="<?php echo Route::_('index.php?option=com_translations&view=editor&layout=edit&id=' . (int) $item->id . '&target=' . urlencode($langCode)); ?>">
+                                        <?php echo $this->escape($statusLabel); ?>
+                                    </a>
+                                <?php elseif ($status !== '') : ?>
+                                    <span class="badge bg-info"><?php echo $this->escape($statusLabel); ?></span>
                                 <?php else : ?>
-                                    <span class="badge bg-secondary"><?php echo Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?></span>
+                                    <span class="badge bg-secondary"><?php echo $this->escape($statusLabel); ?></span>
                                 <?php endif; ?>
                             </td>
                         <?php endforeach; ?>
