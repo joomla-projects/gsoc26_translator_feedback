@@ -17,11 +17,14 @@ namespace Joomla\Component\Translations\Administrator\Model;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
 use Joomla\CMS\Language\Associations;
+use Joomla\CMS\Language\Text;
+use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\FormModel;
+use Joomla\Component\Content\Administrator\Model\ArticleModel;
 use Joomla\Database\ParameterType;
 
 /**
- * Side-by-side editor model.
+ * Side-by-side translation feedback model.
  *
  * Loads one source-language article and its translation in a single target
  * language for display. The queue tables store no pointer to the draft article,
@@ -30,7 +33,7 @@ use Joomla\Database\ParameterType;
  *
  * @since  0.2.0
  */
-class EditorModel extends FormModel
+class TranslatorfeedbackModel extends FormModel
 {
     /**
      * Cached source + translation pair (see getItem()).
@@ -56,7 +59,7 @@ class EditorModel extends FormModel
     }
 
     /**
-     * Load the editor form.
+     * Load the translation feedback form.
      *
      * @param   array    $data      Data for the form.
      * @param   boolean  $loadData  True to load the form's own data.
@@ -67,8 +70,8 @@ class EditorModel extends FormModel
      */
     public function getForm($data = [], $loadData = true)
     {
-        // Build the form from forms/editor.xml; 'jform' namespaces the fields, load_data triggers loadFormData() below.
-        return $this->loadForm('com_translations.editor', 'editor', ['control' => 'jform', 'load_data' => $loadData]);
+        // Build the form from forms/translatorfeedback.xml; 'jform' namespaces the fields, load_data triggers loadFormData() below.
+        return $this->loadForm('com_translations.translatorfeedback', 'translatorfeedback', ['control' => 'jform', 'load_data' => $loadData]);
     }
 
     /**
@@ -91,6 +94,76 @@ class EditorModel extends FormModel
             'translation_introtext' => $item->translation_article->introtext,
             'translation_fulltext'  => $item->translation_article->fulltext,
         ];
+    }
+
+    /**
+     * Save the edited translation into its draft #__content article.
+     *
+     * The write is delegated to com_content's ArticleModel so the normal workflow
+     * and versioning run; only the translated fields are overwritten on the existing
+     * article. The translation article is resolved (via associations) by getItem().
+     *
+     * @param   array  $data  Submitted form values (translation_title/introtext/fulltext).
+     *
+     * @return  boolean  True on success.
+     *
+     * @since   0.2.0
+     */
+    public function save(array $data): bool
+    {
+        $item = $this->getItem();
+
+        if (empty($item->translation_article)) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
+        }
+
+        $translationId = (int) $item->translation_article->id;
+
+        // Reuse com_content's Article admin model - its save() runs the workflow + versioning for us.
+        $component = Factory::getApplication()->bootComponent('com_content');
+
+        // com_content is booted as a generic component, so make sure it can give us an MVC factory before we ask for one.
+        if (!$component instanceof MVCFactoryServiceInterface) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_ERROR'));
+        }
+
+        // 'ignore_request' => true: we hand this model our own data, so it must not read state from the current request.
+        $articleModel = $component->getMVCFactory()->createModel('Article', 'Administrator', ['ignore_request' => true]);
+
+        // And make sure that factory built the article model we expect before we call save() on it.
+        if (!$articleModel instanceof ArticleModel) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_ERROR'));
+        }
+
+        // Load the raw article row - plain column values, avoiding the computed objects getItem() adds (e.g. tags).
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('*')
+            ->from($db->quoteName('#__content'))
+            ->where($db->quoteName('id') . ' = :id')
+            ->bind(':id', $translationId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        $article = $db->loadAssoc();
+
+        if ($article === null) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
+        }
+
+        // Overwrite only the three translated fields; for anything not submitted, keep the article's current value.
+        $introtext = $data['translation_introtext'] ?? ($article['introtext'] ?? '');
+        $fulltext  = $data['translation_fulltext'] ?? ($article['fulltext'] ?? '');
+
+        $article['title']     = $data['translation_title'] ?? ($article['title'] ?? '');
+        $article['introtext'] = $introtext;
+        $article['fulltext']  = $fulltext;
+
+        // com_content's edit form works on a single combined body; keep it consistent with the two columns.
+        $article['articletext'] = trim((string) $fulltext) !== ''
+            ? $introtext . '<hr id="system-readmore">' . $fulltext
+            : $introtext;
+
+        return (bool) $articleModel->save($article);
     }
 
     /**

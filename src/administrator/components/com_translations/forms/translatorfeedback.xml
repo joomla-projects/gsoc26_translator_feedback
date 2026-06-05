@@ -4,18 +4,18 @@
 		<field
 			name="translation_title"
 			type="text"
-			label="COM_TRANSLATIONS_EDITOR_FIELD_TITLE"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_TITLE"
 		/>
 		<field
 			name="translation_introtext"
 			type="editor"
-			label="COM_TRANSLATIONS_EDITOR_FIELD_INTROTEXT"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_INTROTEXT"
 			buttons="true"
 		/>
 		<field
 			name="translation_fulltext"
 			type="editor"
-			label="COM_TRANSLATIONS_EDITOR_FIELD_FULLTEXT"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_FULLTEXT"
 			buttons="true"
 		/>
 	</fieldset>
