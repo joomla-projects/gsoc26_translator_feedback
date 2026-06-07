@@ -20,6 +20,9 @@
             <file driver="postgresql" charset="utf8">sql/uninstall.postgresql.utf8.sql</file>
         </sql>
     </uninstall>
+    <media folder="media/com_translations" destination="com_translations">
+        <folder>css</folder>
+    </media>
     <administration>
         <files folder="administrator/components/com_translations">
             <folder>services</folder>

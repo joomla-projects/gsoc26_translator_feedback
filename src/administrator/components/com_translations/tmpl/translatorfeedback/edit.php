@@ -86,11 +86,16 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
         </div>
 
         <div class="mb-4">
-            <label class="fw-bold d-block mb-2"><?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_INTROTEXT'); ?></label>
             <div class="row">
                 <div class="col-lg-6">
-                    <?php // Article body is trusted, author-supplied HTML (rendered as com_content does). ?>
-                    <div class="border rounded bg-body-tertiary px-3 py-2"><?php echo $originalBody($sourceArticle->introtext); ?></div>
+                    <?php // Original shown as a card so Atum paints its surface and header label in both light and dark; the header doubles as the field label and aligns the body with the editor. ?>
+                    <div class="card border translations-readonly">
+                        <div class="card-header fw-bold">
+                            <span class="icon-lock opacity-75 me-2" aria-hidden="true"></span><?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_INTROTEXT'); ?>
+                        </div>
+                        <?php // Article body is trusted, author-supplied HTML (rendered as com_content does). ?>
+                        <div class="card-body bg-body-tertiary translations-readonly-body"><?php echo $originalBody($sourceArticle->introtext); ?></div>
+                    </div>
                 </div>
                 <div class="col-lg-6">
                     <?php if ($hasTranslation) : ?>
@@ -101,10 +106,15 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
         </div>
 
         <div class="mb-4">
-            <label class="fw-bold d-block mb-2"><?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_FULLTEXT'); ?></label>
             <div class="row">
                 <div class="col-lg-6">
-                    <div class="border rounded bg-body-tertiary px-3 py-2"><?php echo $originalBody($sourceArticle->fulltext); ?></div>
+                    <?php // Original shown as a card so Atum paints its surface and header label in both light and dark; the header doubles as the field label and aligns the body with the editor. ?>
+                    <div class="card border translations-readonly">
+                        <div class="card-header fw-bold">
+                            <span class="icon-lock opacity-75 me-2" aria-hidden="true"></span><?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_FULLTEXT'); ?>
+                        </div>
+                        <div class="card-body bg-body-tertiary translations-readonly-body"><?php echo $originalBody($sourceArticle->fulltext); ?></div>
+                    </div>
                 </div>
                 <div class="col-lg-6">
                     <?php if ($hasTranslation) : ?>

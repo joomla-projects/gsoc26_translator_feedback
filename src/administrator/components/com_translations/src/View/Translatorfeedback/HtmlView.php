@@ -62,9 +62,11 @@ class HtmlView extends BaseHtmlView
         $this->form = $model->getForm();
 
         // The editing form needs the validator so the Save toolbar button can submit, plus keepalive.
+        // The stylesheet caps the read-only original pane so a long source scrolls beside the editor.
         $this->getDocument()->getWebAssetManager()
             ->useScript('keepalive')
-            ->useScript('form.validate');
+            ->useScript('form.validate')
+            ->registerAndUseStyle('com_translations.translatorfeedback', 'com_translations/translatorfeedback.css');
 
         $this->addToolbar();
 
