@@ -75,7 +75,7 @@ class TranslatorfeedbackController extends BaseController
     }
 
     /**
-     * Leave the editor (the translation feedback view) without saving.
+     * Leave the translation feedback view without saving.
      *
      * @return  void
      *

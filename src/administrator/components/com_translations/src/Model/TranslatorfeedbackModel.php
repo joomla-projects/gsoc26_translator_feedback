@@ -18,6 +18,7 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
 use Joomla\CMS\Language\Associations;
 use Joomla\CMS\Language\Text;
+use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\FormModel;
 use Joomla\Component\Content\Administrator\Model\ArticleModel;
@@ -150,6 +151,15 @@ class TranslatorfeedbackModel extends FormModel
             throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
         }
 
+        // Snapshot the translation as it stands now, before the overwrite below replaces it.
+        // This is the machine draft (what was produced before this correction); once #__content
+        // is overwritten these values exist nowhere else, so they must be captured for the feedback pair.
+        $machineDraft = [
+            'title'     => (string) ($article['title'] ?? ''), // those #__content columns can be null in theory so empty string rather than carry a null into feedback later.
+            'introtext' => (string) ($article['introtext'] ?? ''),
+            'fulltext'  => (string) ($article['fulltext'] ?? ''),
+        ];
+
         // Overwrite only the three translated fields; for anything not submitted, keep the article's current value.
         $introtext = $data['translation_introtext'] ?? ($article['introtext'] ?? '');
         $fulltext  = $data['translation_fulltext'] ?? ($article['fulltext'] ?? '');
@@ -158,12 +168,117 @@ class TranslatorfeedbackModel extends FormModel
         $article['introtext'] = $introtext;
         $article['fulltext']  = $fulltext;
 
+        // The values now on the article are the human correction - the counterpart to the
+        // machine draft captured above. Paired field by field, these become the feedback rows.
+        $humanCorrection = [
+            'title'     => (string) $article['title'],
+            'introtext' => (string) $article['introtext'],
+            'fulltext'  => (string) $article['fulltext'],
+        ];
+
         // com_content's edit form works on a single combined body; keep it consistent with the two columns.
         $article['articletext'] = trim((string) $fulltext) !== ''
             ? $introtext . '<hr id="system-readmore">' . $fulltext
             : $introtext;
 
-        return (bool) $articleModel->save($article);
+        $saved = (bool) $articleModel->save($article);
+
+        // Record the correction as feedback - but only once the save actually persisted,
+        // and only when there is a queue row to anchor it to.
+        if ($saved) {
+            $queueId = $this->getQueueId((int) $item->content_id);
+
+            if ($queueId !== null) {
+                $this->recordFeedback($queueId, $machineDraft, $humanCorrection);
+            } else {
+                // The translation feedback view is only reachable from a queue row, so a missing one is unexpected.
+                // Log it rather than failing the save, since feedback has nothing to anchor to.
+                Log::add(
+                    sprintf('No queue row for content id %d; translation saved but feedback was not recorded.', (int) $item->content_id),
+                    Log::WARNING,
+                    'translations'
+                );
+            }
+        }
+
+        return $saved;
+    }
+
+    /**
+     * Find the queue row a piece of feedback belongs to.
+     *
+     * Feedback is anchored to the queue row for the source article (one row per
+     * source article, keyed by content type + id). Returns null when there is no
+     * queue row, since feedback cannot be anchored without one.
+     *
+     * @param   integer  $contentId  The source article id.
+     *
+     * @return  integer|null  The queue row id, or null when none exists.
+     *
+     * @since   0.2.0
+     */
+    private function getQueueId(int $contentId): ?int
+    {
+        // Must match the content type the queue stores (see QueueModel::CONTENT_TYPE).
+        $contentType = 'com_content.article';
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('id'))
+            ->from($db->quoteName('#__translations_queue'))
+            ->where($db->quoteName('content_type') . ' = :contentType')
+            ->where($db->quoteName('content_id') . ' = :contentId')
+            ->bind(':contentType', $contentType, ParameterType::STRING)
+            ->bind(':contentId', $contentId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        $queueId = $db->loadResult();
+
+        return $queueId !== null ? (int) $queueId : null;
+    }
+
+    /**
+     * Store the translator's correction as feedback: one preference pair per changed field.
+     *
+     * Each row pairs like with like - the source text, the machine draft and the human
+     * correction for the same field - so the distiller later has clean, coherent pairs.
+     * A field whose correction matches the machine draft is skipped (no change, nothing to
+     * learn), the same principle Joomla versioning uses. status/created/context_tags/diff_data
+     * fall back to their table defaults; diff_data is filled later by the diff feature.
+     *
+     * @param   integer  $queueId          The queue row this feedback belongs to.
+     * @param   array    $machineDraft     Pre-edit field values (title/introtext/fulltext).
+     * @param   array    $humanCorrection  Submitted field values (title/introtext/fulltext).
+     *
+     * @return  void
+     *
+     * @since   0.2.0
+     */
+    private function recordFeedback(int $queueId, array $machineDraft, array $humanCorrection): void
+    {
+        $item           = $this->getItem();
+        $source         = $item->source_article;
+        $targetLanguage = (string) $item->target_language;
+        $translatorId   = (int) $this->getCurrentUser()->id;
+        $db             = $this->getDatabase();
+
+        foreach (['title', 'introtext', 'fulltext'] as $field) {
+            // Only changed fields are worth learning from - an untouched field is not a correction.
+            if ($humanCorrection[$field] === $machineDraft[$field]) {
+                continue;
+            }
+
+            $row = (object) [
+                'queue_id'         => $queueId,
+                'source_text'      => $source !== null ? (string) ($source->$field ?? '') : '',
+                'machine_draft'    => $machineDraft[$field],
+                'human_correction' => $humanCorrection[$field],
+                'target_language'  => $targetLanguage,
+                'translator_id'    => $translatorId,
+            ];
+
+            $db->insertObject('#__translations_feedback', $row);
+        }
     }
 
     /**
