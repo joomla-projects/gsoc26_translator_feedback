@@ -2,10 +2,17 @@
 
 /* Read-only original panes, shown as cards beside the editable translation. */
 
+/* Pane colours, taken from the template's variables with literal fallbacks for
+   when those variables are not defined. */
+.translations-readonly {
+    --tf-tint-rgb: var(--body-color-rgb, 33, 37, 41);
+    --tf-border: var(--border-color, #dee2e6);
+}
+
 /* Header label bar: a subtle tint with a bottom rule. */
 .translations-readonly .card-header {
-    background-color: rgba(var(--body-color-rgb), 0.05);
-    border-bottom: 2px solid var(--border-color);
+    background-color: rgba(var(--tf-tint-rgb), 0.05);
+    border-bottom: 2px solid var(--tf-border);
     font-size: 1.1rem;
 }
 
