@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="content" method="upgrade">
+	<name>plg_content_translations</name>
+	<creationDate>2026-06</creationDate>
+	<author>Joomla! Project</author>
+	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<version>0.3.0</version>
+	<description>PLG_CONTENT_TRANSLATIONS_XML_DESCRIPTION</description>
+	<namespace path="src">Joomla\Plugin\Content\Translations</namespace>
+	<files>
+		<folder plugin="translations">services</folder>
+		<folder>src</folder>
+		<folder>forms</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_content_translations.ini</language>
+		<language tag="en-GB">language/en-GB/plg_content_translations.sys.ini</language>
+	</languages>
+</extension>

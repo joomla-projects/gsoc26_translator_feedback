@@ -76,6 +76,32 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
+     * Clear the "no need for translation" flag on a source article's queue row.
+     *
+     * @param   integer  $sourceArticleId  The source article id.
+     *
+     * @return  void
+     *
+     * @since   0.3.0
+     */
+    public function allowTranslation(int $sourceArticleId): void
+    {
+        // Bound parameters are passed by reference, so the constant needs a variable.
+        $contentType = self::CONTENT_TYPE;
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue'))
+            ->set($db->quoteName('do_not_translate') . ' = 0')
+            ->where($db->quoteName('content_type') . ' = :contentType')
+            ->where($db->quoteName('content_id') . ' = :contentId')
+            ->bind(':contentType', $contentType, ParameterType::STRING)
+            ->bind(':contentId', $sourceArticleId, ParameterType::INTEGER);
+        $db->setQuery($query);
+        $db->execute();
+    }
+
+    /**
      * Load the source article's raw column values.
      *
      * The row is read directly rather than via com_content's getItem(), whose

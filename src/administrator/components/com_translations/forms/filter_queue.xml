@@ -34,6 +34,17 @@
             hint="JOPTION_SELECT_LANGUAGE"
             class="js-select-submit-on-change"
         />
+        <field
+            name="noneed"
+            type="list"
+            label="COM_TRANSLATIONS_FILTER_NONEED"
+            layout="joomla.form.field.list-fancy-select"
+            class="js-select-submit-on-change"
+            >
+            <option value="">COM_TRANSLATIONS_FILTER_NONEED_HIDE</option>
+            <option value="show">COM_TRANSLATIONS_FILTER_NONEED_SHOW</option>
+            <option value="only">COM_TRANSLATIONS_FILTER_NONEED_ONLY</option>
+        </field>
     </fields>
     <fields name="list">
         <field

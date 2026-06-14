@@ -60,6 +60,16 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                         <th scope="row">
                             <?php echo $this->escape($item->title); ?>
                         </th>
+                        <?php if (!empty($item->do_not_translate)) : ?>
+                            <td class="text-center" colspan="<?php echo \count($this->targetLanguages); ?>">
+                                <span class="badge bg-dark me-2"><?php echo Text::_('COM_TRANSLATIONS_STATUS_NO_NEED'); ?></span>
+                                <a class="btn btn-sm btn-outline-secondary"
+                                    href="<?php echo Route::_('index.php?option=com_translations&task=translation.allowTranslation&id=' . (int) $item->id . '&' . Session::getFormToken() . '=1'); ?>"
+                                    title="<?php echo $this->escape(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_DESC')); ?>">
+                                    <?php echo Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION'); ?>
+                                </a>
+                            </td>
+                        <?php else : ?>
                         <?php foreach ($this->targetLanguages as $langCode => $language) : ?>
                             <?php $status = $item->states[$langCode] ?? ''; ?>
                             <?php // Only review/approved cells open the translation feedback view (shown as a link)?>
@@ -82,6 +92,7 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                                 <?php endif; ?>
                             </td>
                         <?php endforeach; ?>
+                        <?php endif; ?>
                     </tr>
                 <?php endforeach; ?>
             </tbody>

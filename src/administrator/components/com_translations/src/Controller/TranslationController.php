@@ -65,4 +65,36 @@ class TranslationController extends BaseController
 
         $this->setRedirect($queueUrl);
     }
+
+    /**
+     * Clear the "no need for translation" flag so an article can be translated again.
+     *
+     * The trigger is a plain link, so the form token is checked on the query string.
+     *
+     * @return  void
+     *
+     * @since   0.3.0
+     */
+    public function allowTranslation()
+    {
+        $this->checkToken('get');
+
+        $app             = $this->app;
+        $sourceArticleId = $this->input->getInt('id');
+        $queueUrl        = Route::_('index.php?option=com_translations&view=queue', false);
+
+        if ($sourceArticleId === 0) {
+            $app->enqueueMessage(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_ERROR'), 'error');
+            $this->setRedirect($queueUrl);
+
+            return;
+        }
+
+        /** @var \Joomla\Component\Translations\Administrator\Model\TranslationModel $model */
+        $model = $this->getModel('Translation');
+        $model->allowTranslation($sourceArticleId);
+
+        $app->enqueueMessage(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_SUCCESS'), 'message');
+        $this->setRedirect($queueUrl);
+    }
 }
