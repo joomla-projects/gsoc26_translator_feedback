@@ -103,11 +103,11 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Make the toggle reflect the queue, not the copy mirrored in attribs.
+     * Default a new article's language to the source language, and reflect the queue flag on the toggle.
      *
-     * The form binds the article's stored attribs after onContentPrepareForm runs, so the displayed
-     * value is set here, before the bind, where it survives. This keeps the toggle in step with the
-     * queue even after the flag was cleared from the queue grid.
+     * A new article has no language yet, so it is set to the source language here. For an existing article
+     * the displayed toggle value is set from the queue before the form binds the stored attribs (the form
+     * binds after onContentPrepareForm runs), so it survives even after the flag was cleared from the grid.
      *
      * @param   PrepareDataEvent  $event  The event.
      *
@@ -123,8 +123,19 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         $data = $event->getData();
 
-        // The edit form supplies the item as an object with attribs as an array; leave other shapes alone.
-        if (!\is_object($data) || empty($data->id) || !\is_array($data->attribs ?? null)) {
+        if (!\is_object($data)) {
+            return;
+        }
+
+        // A new article has no language yet; default it to the source language.
+        if (empty($data->id) && (string) ($data->language ?? '') === '') {
+            $data->language = $this->getSourceLanguage();
+
+            return;
+        }
+
+        // The edit form supplies the item with attribs as an array; leave other shapes alone.
+        if (empty($data->id) || !\is_array($data->attribs ?? null)) {
             return;
         }
 
