@@ -169,27 +169,55 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
+     * Gather an article's translatable strings into one collection, keyed by field.
+     *
+     * All of an item's strings are handed over together so a provider keeps the context
+     * between them. Empty fields are left out so nothing is translated needlessly.
+     *
+     * @param   array  $sourceArticle  The source article's column values.
+     *
+     * @return  array  The translatable strings keyed by field name.
+     *
+     * @since   0.4.0
+     */
+    private function collectTranslatableStrings(array $sourceArticle): array
+    {
+        $strings = [];
+
+        foreach (['title', 'introtext', 'fulltext'] as $field) {
+            $value = (string) ($sourceArticle[$field] ?? '');
+
+            if (trim($value) !== '') {
+                $strings[$field] = $value;
+            }
+        }
+
+        return $strings;
+    }
+
+    /**
      * Stand-in translation until a translation provider plugin supplies the real one.
      *
-     * Returns the text prefixed with the target language so a draft is visibly "translated"
-     * for testing, without calling any external service. Empty fields stay empty so the
-     * draft gains no text the source does not have. This is the single point a provider
-     * plugin replaces.
+     * Returns each string prefixed with the target language so a draft is visibly "translated"
+     * for testing, without calling any external service. Empty strings stay empty so the draft
+     * gains no text the source does not have. This is the single point a provider plugin replaces.
      *
-     * @param   string  $text            The source text.
+     * @param   array   $strings         The source strings keyed by field name.
      * @param   string  $targetLanguage  The target language code, e.g. 'fr-FR'.
      *
-     * @return  string  The mock-translated text.
+     * @return  array  The mock-translated strings, keyed as given.
      *
      * @since   0.3.0
      */
-    private function mockTranslate(string $text, string $targetLanguage): string
+    private function mockTranslate(array $strings, string $targetLanguage): array
     {
-        if (trim($text) === '') {
-            return $text;
+        foreach ($strings as $field => $text) {
+            $strings[$field] = trim($text) === ''
+                ? $text
+                : \sprintf('[MOCK:%s] %s', $targetLanguage, $text);
         }
 
-        return \sprintf('[MOCK:%s] %s', $targetLanguage, $text);
+        return $strings;
     }
 
     /**
@@ -219,8 +247,12 @@ class TranslationModel extends BaseDatabaseModel
         /** @var ArticleModel $articleModel */
         $articleModel = $component->getMVCFactory()->createModel('Article', 'Administrator', ['ignore_request' => true]);
 
-        $introtext = $this->mockTranslate((string) $sourceArticle['introtext'], $targetLanguage);
-        $fulltext  = $this->mockTranslate((string) $sourceArticle['fulltext'], $targetLanguage);
+        // Hand all the article's translatable strings over together, then read the result back per field.
+        $translated = $this->mockTranslate($this->collectTranslatableStrings($sourceArticle), $targetLanguage);
+
+        $title     = $translated['title']     ?? (string) $sourceArticle['title'];
+        $introtext = $translated['introtext'] ?? (string) $sourceArticle['introtext'];
+        $fulltext  = $translated['fulltext']  ?? (string) $sourceArticle['fulltext'];
 
         // The draft must be saved together with the source's existing association group,
         // otherwise core re-keys the group and earlier drafts fall out of it.
@@ -230,7 +262,7 @@ class TranslationModel extends BaseDatabaseModel
 
         $draft = [
             'id'           => 0,
-            'title'        => $this->mockTranslate((string) $sourceArticle['title'], $targetLanguage),
+            'title'        => $title,
             // Aliases are unique per category regardless of language, so the draft cannot reuse the source's.
             'alias'        => $sourceArticle['alias'] . '-' . strtolower($targetLanguage),
             'introtext'    => $introtext,
