@@ -55,6 +55,7 @@ class QueueModel extends ListModel
                 'title', 'a.title',
                 'status',
                 'languages',
+                'noneed',
             ];
         }
 
@@ -88,6 +89,9 @@ class QueueModel extends ListModel
         $this->setState('filter.status', $this->getMultiFilterState('status', $submittedFilter));
         $this->setState('filter.languages', $this->getMultiFilterState('languages', $submittedFilter));
 
+        // Read like the multi-selects (from the submitted filter array) so the Clear button resets it too.
+        $this->setState('filter.noneed', $this->getSingleFilterState('noneed', $submittedFilter));
+
         // Source language: the content language originals are authored in (queue rows).
         // Configurable in config.xml, defaults to en-GB.
         $params = ComponentHelper::getParams('com_translations');
@@ -120,6 +124,29 @@ class QueueModel extends ListModel
     }
 
     /**
+     * Single-select filter value, read from the submitted filter array so Clear resets it.
+     *
+     * @param   string      $name             Filter field name .
+     * @param   array|null  $submittedFilter  Submitted 'filter' array, or null on plain page load.
+     *
+     * @return  string  Selected value (empty = default/no filter).
+     *
+     * @since   0.3.0
+     */
+    private function getSingleFilterState(string $name, ?array $submittedFilter): string
+    {
+        if (is_array($submittedFilter)) {
+            return (string) ($submittedFilter[$name] ?? '');
+        }
+
+        /** @var \Joomla\CMS\Application\CMSApplication $app */
+        $app    = Factory::getApplication();
+        $stored = (array) $app->getUserState($this->context . '.filter', []);
+
+        return (string) ($stored[$name] ?? '');
+    }
+
+    /**
      * Method to get a store id based on model configuration state.
      *
      * @param   string  $id  A prefix for the store id.
@@ -133,6 +160,7 @@ class QueueModel extends ListModel
         $id .= ':' . $this->getState('filter.search');
         $id .= ':' . implode(',', (array) $this->getState('filter.status'));
         $id .= ':' . implode(',', (array) $this->getState('filter.languages'));
+        $id .= ':' . $this->getState('filter.noneed');
 
         return parent::getStoreId($id);
     }
@@ -157,12 +185,32 @@ class QueueModel extends ListModel
                 $db->quoteName('a.title'),
                 $db->quoteName('a.language'),
                 $db->quoteName('a.state'),
+                $db->quoteName('noNeed.do_not_translate'),
             ]
         )
             ->from($db->quoteName('#__content', 'a'))
+            // LEFT join keeps articles that have no queue row; their do_not_translate is then NULL.
+            ->join(
+                'LEFT',
+                $db->quoteName('#__translations_queue', 'noNeed')
+                . ' ON ' . $db->quoteName('noNeed.content_id') . ' = ' . $db->quoteName('a.id')
+                . ' AND ' . $db->quoteName('noNeed.content_type') . ' = ' . $db->quote($contentType)
+            )
             ->where($db->quoteName('a.language') . ' = :sourceLanguage')
             ->where($db->quoteName('a.state') . ' <> -2')
             ->bind(':sourceLanguage', $sourceLanguage);
+
+        // "No need for translation" articles are hidden by default; the filter can reveal or isolate them.
+        $noNeed = (string) $this->getState('filter.noneed', '');
+
+        if ($noNeed === 'only') {
+            $query->where($db->quoteName('noNeed.do_not_translate') . ' = 1');
+        } elseif ($noNeed !== 'show') {
+            $query->where(
+                '(' . $db->quoteName('noNeed.do_not_translate') . ' IS NULL OR '
+                . $db->quoteName('noNeed.do_not_translate') . ' = 0)'
+            );
+        }
 
         // Filter - search on article title(title LIKE), or "id:<n>" for direct lookup.
         $search = $this->getState('filter.search');
