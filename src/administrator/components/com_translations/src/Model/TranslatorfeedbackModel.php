@@ -14,6 +14,8 @@ namespace Joomla\Component\Translations\Administrator\Model;
 \defined('_JEXEC') or die;
 // phpcs:enable PSR1.Files.SideEffects
 
+use Joomla\CMS\Application\CMSApplicationInterface;
+use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Form\Form;
 use Joomla\CMS\Language\Associations;
@@ -104,13 +106,14 @@ class TranslatorfeedbackModel extends FormModel
      * and versioning run; only the translated fields are overwritten on the existing
      * article. The translation article is resolved (via associations) by getItem().
      *
-     * @param   array  $data  Submitted form values (translation_title/introtext/fulltext).
+     * @param   array                    $data         Submitted form values (translation_title/introtext/fulltext).
+     * @param   CMSApplicationInterface  $application  The application, used to boot com_content.
      *
      * @return  boolean  True on success.
      *
      * @since   0.2.0
      */
-    public function save(array $data): bool
+    public function save(array $data, CMSApplicationInterface $application): bool
     {
         $item = $this->getItem();
 
@@ -121,20 +124,12 @@ class TranslatorfeedbackModel extends FormModel
         $translationId = (int) $item->translation_article->id;
 
         // Reuse com_content's Article admin model - its save() runs the workflow + versioning for us.
-        $component = Factory::getApplication()->bootComponent('com_content');
-
-        // com_content is booted as a generic component, so make sure it can give us an MVC factory before we ask for one.
-        if (!$component instanceof MVCFactoryServiceInterface) {
-            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_ERROR'));
-        }
+        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
+        $component = $application->bootComponent('com_content');
 
         // 'ignore_request' => true: we hand this model our own data, so it must not read state from the current request.
+        /** @var ArticleModel $articleModel */
         $articleModel = $component->getMVCFactory()->createModel('Article', 'Administrator', ['ignore_request' => true]);
-
-        // And make sure that factory built the article model we expect before we call save() on it.
-        if (!$articleModel instanceof ArticleModel) {
-            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_ERROR'));
-        }
 
         // Load the raw article row - plain column values, avoiding the computed objects getItem() adds (e.g. tags).
         $db    = $this->getDatabase();

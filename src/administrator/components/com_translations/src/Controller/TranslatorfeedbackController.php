@@ -56,7 +56,7 @@ class TranslatorfeedbackController extends BaseController
         $error = null;
 
         try {
-            $saved = $model->save(\is_array($form) ? $form : []);
+            $saved = $model->save(\is_array($form) ? $form : [], $app);
         } catch (\Throwable $e) {
             $saved = false;
             $error = $e->getMessage();
