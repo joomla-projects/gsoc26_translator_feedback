@@ -20,6 +20,7 @@ use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\Component\Content\Administrator\Model\ArticleModel;
 use Joomla\Database\ParameterType;
+use Joomla\Registry\Registry;
 
 /**
  * Producer model: turns a source article and a target language into an unpublished
@@ -37,6 +38,19 @@ class TranslationModel extends BaseDatabaseModel
      * @since  0.3.0
      */
     private const CONTENT_TYPE = 'com_content.article';
+
+    /**
+     * Translatable keys inside the article's images JSON (alt text and captions).
+     *
+     * @var    string[]
+     * @since  0.4.0
+     */
+    private const TRANSLATABLE_IMAGE_FIELDS = [
+        'image_intro_alt',
+        'image_intro_caption',
+        'image_fulltext_alt',
+        'image_fulltext_caption',
+    ];
 
     /**
      * Translate a source article into one target language.
@@ -121,7 +135,7 @@ class TranslationModel extends BaseDatabaseModel
         $query = $db->getQuery(true)
             ->select(
                 $db->quoteName(
-                    ['id', 'title', 'alias', 'introtext', 'fulltext', 'language', 'catid', 'access', 'created_by']
+                    ['id', 'title', 'alias', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note', 'images', 'language', 'catid', 'access', 'created_by']
                 )
             )
             ->from($db->quoteName('#__content'))
@@ -184,11 +198,22 @@ class TranslationModel extends BaseDatabaseModel
     {
         $strings = [];
 
-        foreach (['title', 'introtext', 'fulltext'] as $field) {
+        foreach (['title', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note'] as $field) {
             $value = (string) ($sourceArticle[$field] ?? '');
 
             if (trim($value) !== '') {
                 $strings[$field] = $value;
+            }
+        }
+
+        // Image alt and caption text live inside the images JSON, gathered under a dotted images path.
+        $images = new Registry($sourceArticle['images']);
+
+        foreach (self::TRANSLATABLE_IMAGE_FIELDS as $field) {
+            $value = (string) $images->get($field, '');
+
+            if (trim($value) !== '') {
+                $strings['images.' . $field] = $value;
             }
         }
 
@@ -253,6 +278,18 @@ class TranslationModel extends BaseDatabaseModel
         $title     = $translated['title']     ?? (string) $sourceArticle['title'];
         $introtext = $translated['introtext'] ?? (string) $sourceArticle['introtext'];
         $fulltext  = $translated['fulltext']  ?? (string) $sourceArticle['fulltext'];
+        $metadesc  = $translated['metadesc']  ?? (string) $sourceArticle['metadesc'];
+        $metakey   = $translated['metakey']   ?? (string) $sourceArticle['metakey'];
+        $note      = $translated['note']      ?? (string) $sourceArticle['note'];
+
+        // Rebuild the images JSON from the source, overlaying any translated alt and caption text.
+        $images = new Registry($sourceArticle['images']);
+
+        foreach (self::TRANSLATABLE_IMAGE_FIELDS as $field) {
+            if (isset($translated['images.' . $field])) {
+                $images->set($field, $translated['images.' . $field]);
+            }
+        }
 
         // The draft must be saved together with the source's existing association group,
         // otherwise core re-keys the group and earlier drafts fall out of it.
@@ -267,6 +304,10 @@ class TranslationModel extends BaseDatabaseModel
             'alias'        => $sourceArticle['alias'] . '-' . strtolower($targetLanguage),
             'introtext'    => $introtext,
             'fulltext'     => $fulltext,
+            'metadesc'     => $metadesc,
+            'metakey'      => $metakey,
+            'note'         => $note,
+            'images'       => $images->toArray(),
             'language'     => $targetLanguage,
             'catid'        => (int) $sourceArticle['catid'],
             // Keep the draft unpublished until a translator approves it.
