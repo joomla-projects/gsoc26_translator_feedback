@@ -33,6 +33,7 @@
             <file>config.xml</file>
             <file>access.xml</file>
             <file>com_translations.xml</file>
+            <file>contenttypes.json</file>
         </files>
         <languages folder="administrator/components/com_translations">
             <language tag="en-GB">language/en-GB/com_translations.sys.ini</language>

@@ -1,0 +1,24 @@
+{
+    "contentTypes": {
+        "article": {
+            "translatableFields": [
+                "title",
+                "introtext",
+                "fulltext",
+                "metadesc",
+                "metakey",
+                "note",
+                { "images": ["image_intro_alt", "image_intro_caption", "image_fulltext_alt", "image_fulltext_caption"] }
+            ],
+            "component": "com_content",
+            "model": "Article",
+            "table": "#__content",
+            "type_id": "1",
+            "context_custom_fields": "com_content.article",
+            "context_associations": "com_content.item",
+            "associatedFields": { "catid": { "contentType": "category" } },
+            "m2m_relation": "tag"
+        }
+    }
+}
+

@@ -17,14 +17,14 @@ namespace Joomla\Component\Translations\Administrator\Model;
 use Joomla\CMS\Application\CMSApplicationInterface;
 use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
+use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
-use Joomla\Component\Content\Administrator\Model\ArticleModel;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
 /**
- * Producer model: turns a source article and a target language into an unpublished
- * translated draft article, linked back to the source via #__associations, with its
+ * Producer model: turns a source item and a target language into an unpublished
+ * translated draft, linked back to the source via #__associations, with its
  * per-language queue state set to "review" (ready for a translator to correct).
  *
  * @since  0.3.0
@@ -40,65 +40,69 @@ class TranslationModel extends BaseDatabaseModel
     private const CONTENT_TYPE = 'com_content.article';
 
     /**
-     * Translatable keys inside the article's images JSON (alt text and captions).
+     * Key into the content type translation map (contenttypes.json) for articles.
      *
-     * @var    string[]
+     * @var    string
      * @since  0.4.0
      */
-    private const TRANSLATABLE_IMAGE_FIELDS = [
-        'image_intro_alt',
-        'image_intro_caption',
-        'image_fulltext_alt',
-        'image_fulltext_caption',
-    ];
+    private const CONTENT_TYPE_KEY = 'article';
 
     /**
-     * Translate a source article into one target language.
+     * The content type translation map, loaded once from contenttypes.json.
      *
-     * Creates the unpublished draft article with its association to the source and
+     * @var    array|null
+     * @since  0.4.0
+     */
+    private ?array $contentTypePropertiesMap = null;
+
+    /**
+     * Translate a source item into one target language.
+     *
+     * Creates the unpublished draft with its association to the source and
      * sets the per-language queue state to "review", ready for translator feedback.
      *
-     * @param   integer                  $sourceArticleId  The source article id.
+     * @param   integer                  $sourceItemId     The source item id.
      * @param   string                   $targetLanguage   The target language code, e.g. 'fr-FR'.
-     * @param   CMSApplicationInterface  $application      The application, used to boot com_content.
+     * @param   CMSApplicationInterface  $application      The application, used to boot the component.
      *
      * @return  void
      *
-     * @throws  \RuntimeException  If the article is missing or not translatable, or the draft cannot be created.
+     * @throws  \RuntimeException  If the item is missing or not translatable, or the draft cannot be created.
      *
      * @since   0.3.0
      */
-    public function translate(int $sourceArticleId, string $targetLanguage, CMSApplicationInterface $application): void
+    public function translate(int $sourceItemId, string $targetLanguage, CMSApplicationInterface $application): void
     {
-        $sourceArticle = $this->getSourceArticle($sourceArticleId);
+        $properties = $this->getContentTypeProperties(self::CONTENT_TYPE_KEY);
+        $sourceItem = $this->getSourceItem($sourceItemId, (string) ($properties['table'] ?? ''));
 
-        // An all-languages article is shown for every language, so there is nothing to translate.
-        if ($sourceArticle['language'] === '*') {
-            throw new \RuntimeException(\sprintf('Article %d applies to all languages.', $sourceArticleId));
+        // An all-languages item is shown for every language, so there is nothing to translate.
+        if ($sourceItem['language'] === '*') {
+            throw new \RuntimeException(\sprintf('Item %d applies to all languages.', $sourceItemId));
         }
 
-        if ($sourceArticle['language'] === $targetLanguage) {
-            throw new \RuntimeException(\sprintf('Article %d is already in %s.', $sourceArticleId, $targetLanguage));
+        if ($sourceItem['language'] === $targetLanguage) {
+            throw new \RuntimeException(\sprintf('Item %d is already in %s.', $sourceItemId, $targetLanguage));
         }
 
-        if ($this->isDoNotTranslate($sourceArticleId)) {
-            throw new \RuntimeException(\sprintf('Article %d is marked as not to be translated.', $sourceArticleId));
+        if ($this->isDoNotTranslate($sourceItemId)) {
+            throw new \RuntimeException(\sprintf('Item %d is marked as not to be translated.', $sourceItemId));
         }
 
-        $this->createDraft($sourceArticle, $targetLanguage, $application);
-        $this->markReadyForReview($sourceArticleId, $targetLanguage);
+        $this->createDraft($sourceItem, $targetLanguage, $application, $properties);
+        $this->markReadyForReview($sourceItemId, $targetLanguage);
     }
 
     /**
-     * Clear the "no need for translation" flag on a source article's queue row.
+     * Clear the "no need for translation" flag on a source item's queue row.
      *
-     * @param   integer  $sourceArticleId  The source article id.
+     * @param   integer  $sourceItemId  The source item id.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    public function allowTranslation(int $sourceArticleId): void
+    public function allowTranslation(int $sourceItemId): void
     {
         // Bound parameters are passed by reference, so the constant needs a variable.
         $contentType = self::CONTENT_TYPE;
@@ -110,61 +114,58 @@ class TranslationModel extends BaseDatabaseModel
             ->where($db->quoteName('content_type') . ' = :contentType')
             ->where($db->quoteName('content_id') . ' = :contentId')
             ->bind(':contentType', $contentType, ParameterType::STRING)
-            ->bind(':contentId', $sourceArticleId, ParameterType::INTEGER);
+            ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
         $db->execute();
     }
 
     /**
-     * Load the source article's raw column values.
+     * Load the source item's raw column values.
      *
-     * The row is read directly rather than via com_content's getItem(), whose
+     * The row is read directly rather than via the component's getItem(), whose
      * computed objects break a re-save.
      *
-     * @param   integer  $sourceArticleId  The source article id.
+     * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $table         The content type's database table.
      *
-     * @return  array  The article's column values.
+     * @return  array  The item's column values.
      *
-     * @throws  \RuntimeException  If the article does not exist.
+     * @throws  \RuntimeException  If the item does not exist.
      *
      * @since   0.3.0
      */
-    private function getSourceArticle(int $sourceArticleId): array
+    private function getSourceItem(int $sourceItemId, string $table): array
     {
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
-            ->select(
-                $db->quoteName(
-                    ['id', 'title', 'alias', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note', 'images', 'language', 'catid', 'access', 'created_by']
-                )
-            )
-            ->from($db->quoteName('#__content'))
+            ->select('*')
+            ->from($db->quoteName($table))
             ->where($db->quoteName('id') . ' = :id')
-            ->bind(':id', $sourceArticleId, ParameterType::INTEGER);
+            ->bind(':id', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
-        $sourceArticle = $db->loadAssoc();
+        $sourceItem = $db->loadAssoc();
 
-        if ($sourceArticle === null) {
-            throw new \RuntimeException(\sprintf('Source article %d not found.', $sourceArticleId));
+        if ($sourceItem === null) {
+            throw new \RuntimeException(\sprintf('Source item %d not found.', $sourceItemId));
         }
 
-        return $sourceArticle;
+        return $sourceItem;
     }
 
     /**
-     * Check whether the source article is flagged as not to be translated.
+     * Check whether the source item is flagged as not to be translated.
      *
-     * The flag lives on the article's queue row; an article without a queue row
+     * The flag lives on the item's queue row; an item without a queue row
      * is translatable.
      *
-     * @param   integer  $sourceArticleId  The source article id.
+     * @param   integer  $sourceItemId  The source item id.
      *
-     * @return  boolean  True when the article must not be translated.
+     * @return  boolean  True when the item must not be translated.
      *
      * @since   0.3.0
      */
-    private function isDoNotTranslate(int $sourceArticleId): bool
+    private function isDoNotTranslate(int $sourceItemId): bool
     {
         // Bound parameters are passed by reference, so the constant needs a variable.
         $contentType = self::CONTENT_TYPE;
@@ -176,44 +177,94 @@ class TranslationModel extends BaseDatabaseModel
             ->where($db->quoteName('content_type') . ' = :contentType')
             ->where($db->quoteName('content_id') . ' = :contentId')
             ->bind(':contentType', $contentType, ParameterType::STRING)
-            ->bind(':contentId', $sourceArticleId, ParameterType::INTEGER);
+            ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
         return (bool) $db->loadResult();
     }
 
     /**
-     * Gather an article's translatable strings into one collection, keyed by field.
+     * Read a content type's translation properties from the map file.
+     *
+     * The map (contenttypes.json) is read once and lists, per content type, which fields
+     * are translatable plus the contexts and relations the later steps need.
+     *
+     * @param   string  $contentTypeKey  The content type key.
+     *
+     * @return  array  The content type's properties.
+     *
+     * @throws  \RuntimeException  If the map file is missing or the content type is not mapped.
+     *
+     * @since   0.4.0
+     */
+    private function getContentTypeProperties(string $contentTypeKey): array
+    {
+        if ($this->contentTypePropertiesMap === null) {
+            $path = JPATH_ADMINISTRATOR . '/components/com_translations/contenttypes.json';
+
+            if (!is_file($path)) {
+                throw new \RuntimeException('The content type translation map (contenttypes.json) is missing.');
+            }
+
+            $decoded = json_decode((string) file_get_contents($path), true);
+
+            $this->contentTypePropertiesMap = (\is_array($decoded) && isset($decoded['contentTypes']) && \is_array($decoded['contentTypes']))
+                ? $decoded['contentTypes']
+                : [];
+        }
+
+        if (!isset($this->contentTypePropertiesMap[$contentTypeKey])) {
+            throw new \RuntimeException(\sprintf('No translation properties mapped for content type "%s".', $contentTypeKey));
+        }
+
+        return (array) $this->contentTypePropertiesMap[$contentTypeKey];
+    }
+
+    /**
+     * Gather an item's translatable strings into one collection, keyed by field.
      *
      * All of an item's strings are handed over together so a provider keeps the context
-     * between them. Empty fields are left out so nothing is translated needlessly.
+     * between them. Empty fields are left out so nothing is translated needlessly. The
+     * field list comes from the content type map: a plain name is a column, an array maps
+     * a JSON column to its translatable sub-keys (gathered under a dotted path).
      *
-     * @param   array  $sourceArticle  The source article's column values.
+     * @param   array  $sourceItem          The source item's column values.
+     * @param   array  $translatableFields  The content type's translatable field list.
      *
      * @return  array  The translatable strings keyed by field name.
      *
      * @since   0.4.0
      */
-    private function collectTranslatableStrings(array $sourceArticle): array
+    private function collectTranslatableStrings(array $sourceItem, array $translatableFields): array
     {
         $strings = [];
 
-        foreach (['title', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note'] as $field) {
-            $value = (string) ($sourceArticle[$field] ?? '');
+        foreach ($translatableFields as $field) {
+            if (\is_string($field)) {
+                $value = (string) ($sourceItem[$field] ?? '');
 
-            if (trim($value) !== '') {
-                $strings[$field] = $value;
+                if (trim($value) !== '') {
+                    $strings[$field] = $value;
+                }
+
+                continue;
             }
-        }
 
-        // Image alt and caption text live inside the images JSON, gathered under a dotted images path.
-        $images = new Registry($sourceArticle['images']);
+            if (!\is_array($field)) {
+                continue;
+            }
 
-        foreach (self::TRANSLATABLE_IMAGE_FIELDS as $field) {
-            $value = (string) $images->get($field, '');
+            foreach ($field as $jsonColumn => $subKeys) {
+                $registry = new Registry($sourceItem[$jsonColumn] ?? '');
 
-            if (trim($value) !== '') {
-                $strings['images.' . $field] = $value;
+                foreach ((array) $subKeys as $subKey) {
+                    $subKey = (string) $subKey;
+                    $value  = (string) $registry->get($subKey, '');
+
+                    if (trim($value) !== '') {
+                        $strings[$jsonColumn . '.' . $subKey] = $value;
+                    }
+                }
             }
         }
 
@@ -246,15 +297,64 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
-     * Create the unpublished draft article for one target language.
+     * Map translated strings back to their fields for the draft.
      *
-     * The draft is saved through com_content's ArticleModel so versioning, events and
-     * association handling run exactly as for a hand created article. Passing the source
-     * article under 'associations' makes core write the #__associations link itself.
+     * Mirrors collectTranslatableStrings: a plain field name becomes a column value (falling
+     * back to the source when nothing was translated), a JSON column is rebuilt from the
+     * source with its translated sub-keys overlaid so untranslated keys (like the image path) survive.
      *
-     * @param   array                    $sourceArticle   The source article's column values.
+     * @param   array  $sourceItem          The source item's column values.
+     * @param   array  $translatableFields  The content type's translatable field list.
+     * @param   array  $translated          The translated strings, keyed as collected.
+     *
+     * @return  array  The draft field values keyed by column.
+     *
+     * @since   0.4.0
+     */
+    private function packTranslatedFields(array $sourceItem, array $translatableFields, array $translated): array
+    {
+        $fields = [];
+
+        foreach ($translatableFields as $field) {
+            if (\is_string($field)) {
+                $fields[$field] = $translated[$field] ?? (string) ($sourceItem[$field] ?? '');
+
+                continue;
+            }
+
+            if (!\is_array($field)) {
+                continue;
+            }
+
+            foreach ($field as $jsonColumn => $subKeys) {
+                $registry = new Registry($sourceItem[$jsonColumn] ?? '');
+
+                foreach ((array) $subKeys as $subKey) {
+                    $subKey = (string) $subKey;
+
+                    if (isset($translated[$jsonColumn . '.' . $subKey])) {
+                        $registry->set($subKey, $translated[$jsonColumn . '.' . $subKey]);
+                    }
+                }
+
+                $fields[$jsonColumn] = $registry->toArray();
+            }
+        }
+
+        return $fields;
+    }
+
+    /**
+     * Create the unpublished draft for one target language.
+     *
+     * The draft is saved through the managing component's model so versioning, events and
+     * association handling run exactly as for a hand created item. Passing the source
+     * item under 'associations' makes core write the #__associations link itself.
+     *
+     * @param   array                    $sourceItem      The source item's column values.
      * @param   string                   $targetLanguage  The target language code.
-     * @param   CMSApplicationInterface  $application     The application, used to boot com_content.
+     * @param   CMSApplicationInterface  $application     The application, used to boot the component.
+     * @param   array                    $properties      The content type's properties from the map.
      *
      * @return  void
      *
@@ -262,95 +362,79 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @since   0.3.0
      */
-    private function createDraft(array $sourceArticle, string $targetLanguage, CMSApplicationInterface $application): void
+    private function createDraft(array $sourceItem, string $targetLanguage, CMSApplicationInterface $application, array $properties): void
     {
-        // Save through com_content's article model so versioning and the content events run.
+        // Save through the managing component's model so versioning and the content events run.
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
-        $component = $application->bootComponent('com_content');
+        $component = $application->bootComponent((string) ($properties['component'] ?? ''));
 
         // Ignore the request because the model gets its data from us.
-        /** @var ArticleModel $articleModel */
-        $articleModel = $component->getMVCFactory()->createModel('Article', 'Administrator', ['ignore_request' => true]);
+        /** @var AdminModel $model */
+        $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
 
-        // Hand all the article's translatable strings over together, then read the result back per field.
-        $translated = $this->mockTranslate($this->collectTranslatableStrings($sourceArticle), $targetLanguage);
+        // Hand the whole collection over together, then map each translated value back to its field.
+        $translatableFields = (array) ($properties['translatableFields'] ?? []);
+        $translated         = $this->mockTranslate($this->collectTranslatableStrings($sourceItem, $translatableFields), $targetLanguage);
 
-        $title     = $translated['title']     ?? (string) $sourceArticle['title'];
-        $introtext = $translated['introtext'] ?? (string) $sourceArticle['introtext'];
-        $fulltext  = $translated['fulltext']  ?? (string) $sourceArticle['fulltext'];
-        $metadesc  = $translated['metadesc']  ?? (string) $sourceArticle['metadesc'];
-        $metakey   = $translated['metakey']   ?? (string) $sourceArticle['metakey'];
-        $note      = $translated['note']      ?? (string) $sourceArticle['note'];
-
-        // Rebuild the images JSON from the source, overlaying any translated alt and caption text.
-        $images = new Registry($sourceArticle['images']);
-
-        foreach (self::TRANSLATABLE_IMAGE_FIELDS as $field) {
-            if (isset($translated['images.' . $field])) {
-                $images->set($field, $translated['images.' . $field]);
-            }
-        }
+        $fields = $this->packTranslatedFields($sourceItem, $translatableFields, $translated);
 
         // The draft must be saved together with the source's existing association group,
         // otherwise core re-keys the group and earlier drafts fall out of it.
-        $associations = $this->getAssociationGroup((int) $sourceArticle['id']);
+        $associations = $this->getAssociationGroup((int) $sourceItem['id'], (string) ($properties['context_associations'] ?? ''), (string) ($properties['table'] ?? ''));
 
-        $associations[$sourceArticle['language']] = (int) $sourceArticle['id'];
+        $associations[$sourceItem['language']] = (int) $sourceItem['id'];
 
-        $draft = [
+        $draft = array_merge($fields, [
             'id'           => 0,
-            'title'        => $title,
             // Aliases are unique per category regardless of language, so the draft cannot reuse the source's.
-            'alias'        => $sourceArticle['alias'] . '-' . strtolower($targetLanguage),
-            'introtext'    => $introtext,
-            'fulltext'     => $fulltext,
-            'metadesc'     => $metadesc,
-            'metakey'      => $metakey,
-            'note'         => $note,
-            'images'       => $images->toArray(),
+            'alias'        => $sourceItem['alias'] . '-' . strtolower($targetLanguage),
             'language'     => $targetLanguage,
-            'catid'        => (int) $sourceArticle['catid'],
+            'catid'        => (int) $sourceItem['catid'],
             // Keep the draft unpublished until a translator approves it.
             'state'        => 0,
-            'access'       => (int) $sourceArticle['access'],
-            'created_by'   => (int) $sourceArticle['created_by'],
+            'access'       => (int) $sourceItem['access'],
+            'created_by'   => (int) $sourceItem['created_by'],
             // Joomla links the draft into this association group on save.
             'associations' => $associations,
-        ];
+        ]);
 
-        // com_content's edit form works on a single combined body; keep it consistent with the two columns.
-        $draft['articletext'] = trim($fulltext) !== ''
-            ? $introtext . '<hr id="system-readmore">' . $fulltext
-            : $introtext;
+        // com_content combines intro and full text into one body field; only relevant when those fields exist.
+        if (isset($fields['introtext']) || isset($fields['fulltext'])) {
+            $introtext = (string) ($fields['introtext'] ?? '');
+            $fulltext  = (string) ($fields['fulltext'] ?? '');
 
-        if (!$articleModel->save($draft)) {
+            $draft['articletext'] = trim($fulltext) !== ''
+                ? $introtext . '<hr id="system-readmore">' . $fulltext
+                : $introtext;
+        }
+
+        if (!$model->save($draft)) {
             throw new \RuntimeException(
-                \sprintf('Could not create the %s draft for article %d.', $targetLanguage, (int) $sourceArticle['id'])
+                \sprintf('Could not create the %s draft for item %d.', $targetLanguage, (int) $sourceItem['id'])
             );
         }
     }
 
     /**
-     * Load the article ids of the source article's association group, keyed by language.
+     * Load the item ids of the source item's association group, keyed by language.
      *
-     * Joomla keeps all language versions of an article in one association group
-     * under a shared key. Returns an empty array when the article has no
+     * Joomla keeps all language versions of an item in one association group
+     * under a shared key. Returns an empty array when the item has no
      * associations yet.
      *
-     * @param   integer  $sourceArticleId  The source article id.
+     * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $context       The associations context, e.g. 'com_content.item'.
+     * @param   string   $table         The content type's database table.
      *
-     * @return  array  Article ids keyed by language code.
+     * @return  array  Item ids keyed by language code.
      *
      * @since   0.3.0
      */
-    private function getAssociationGroup(int $sourceArticleId): array
+    private function getAssociationGroup(int $sourceItemId, string $context, string $table): array
     {
-        // The associations context com_content stores articles under.
-        $context = 'com_content.item';
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
-            ->select($db->quoteName(['article.language', 'article.id']))
+            ->select($db->quoteName(['item.language', 'item.id']))
             ->from($db->quoteName('#__associations', 'sourceAssociation'))
             ->join(
                 'INNER',
@@ -359,37 +443,37 @@ class TranslationModel extends BaseDatabaseModel
             )
             ->join(
                 'INNER',
-                $db->quoteName('#__content', 'article'),
-                $db->quoteName('article.id') . ' = ' . $db->quoteName('groupAssociation.id')
+                $db->quoteName($table, 'item'),
+                $db->quoteName('item.id') . ' = ' . $db->quoteName('groupAssociation.id')
             )
             ->where($db->quoteName('sourceAssociation.context') . ' = :context')
             ->where($db->quoteName('groupAssociation.context') . ' = :groupContext')
             ->where($db->quoteName('sourceAssociation.id') . ' = :sourceId')
             ->bind(':context', $context, ParameterType::STRING)
             ->bind(':groupContext', $context, ParameterType::STRING)
-            ->bind(':sourceId', $sourceArticleId, ParameterType::INTEGER);
+            ->bind(':sourceId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
         return $db->loadAssocList('language', 'id');
     }
 
     /**
-     * Set the source article's state for one target language to "review".
+     * Set the source item's state for one target language to "review".
      *
      * One state row exists per (queue row, target language); no row means "no
      * translation yet". The first translation inserts the row, a repeat run
      * updates it. The row's modified time is maintained by the database.
      *
-     * @param   integer  $sourceArticleId  The source article id.
-     * @param   string   $targetLanguage   The target language code.
+     * @param   integer  $sourceItemId    The source item id.
+     * @param   string   $targetLanguage  The target language code.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    private function markReadyForReview(int $sourceArticleId, string $targetLanguage): void
+    private function markReadyForReview(int $sourceItemId, string $targetLanguage): void
     {
-        $queueId     = $this->getOrCreateQueueId($sourceArticleId);
+        $queueId     = $this->getOrCreateQueueId($sourceItemId);
         $reviewState = 'review';
 
         // A state row may already exist from an earlier translation of this language.
@@ -430,18 +514,18 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
-     * Find the queue row for a source article, creating it when missing.
+     * Find the queue row for a source item, creating it when missing.
      *
-     * The queue holds one row per source article, keyed by content type + id.
-     * A source article gets its row with its first translation.
+     * The queue holds one row per source item, keyed by content type + id.
+     * A source item gets its row with its first translation.
      *
-     * @param   integer  $sourceArticleId  The source article id.
+     * @param   integer  $sourceItemId  The source item id.
      *
      * @return  integer  The queue row id.
      *
      * @since   0.3.0
      */
-    private function getOrCreateQueueId(int $sourceArticleId): int
+    private function getOrCreateQueueId(int $sourceItemId): int
     {
         // Bound parameters are passed by reference, so the constant needs a variable.
         $contentType = self::CONTENT_TYPE;
@@ -453,7 +537,7 @@ class TranslationModel extends BaseDatabaseModel
             ->where($db->quoteName('content_type') . ' = :contentType')
             ->where($db->quoteName('content_id') . ' = :contentId')
             ->bind(':contentType', $contentType, ParameterType::STRING)
-            ->bind(':contentId', $sourceArticleId, ParameterType::INTEGER);
+            ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
         $queueId = $db->loadResult();
@@ -464,7 +548,7 @@ class TranslationModel extends BaseDatabaseModel
 
         $queueRow = (object) [
             'content_type' => self::CONTENT_TYPE,
-            'content_id'   => $sourceArticleId,
+            'content_id'   => $sourceItemId,
         ];
 
         $db->insertObject('#__translations_queue', $queueRow, 'id');
