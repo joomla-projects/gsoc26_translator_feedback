@@ -29,6 +29,14 @@ use Joomla\CMS\Router\Route;
 class TranslationController extends BaseController
 {
     /**
+     * Content type the queue trigger translates; comes from the request once the queue carries more than articles.
+     *
+     * @var    string
+     * @since  0.4.0
+     */
+    private const CONTENT_TYPE = 'com_content.article';
+
+    /**
      * Translate one source article into one target language.
      *
      * The trigger is a plain link, so the form token is checked on the query string.
@@ -57,7 +65,7 @@ class TranslationController extends BaseController
         $model = $this->getModel('Translation');
 
         try {
-            $model->translate($sourceArticleId, $targetLanguage, $app);
+            $model->translate($sourceArticleId, $targetLanguage, self::CONTENT_TYPE, $app);
             $app->enqueueMessage(Text::sprintf('COM_TRANSLATIONS_TRANSLATE_SUCCESS', $targetLanguage), 'message');
         } catch (\Throwable $e) {
             $app->enqueueMessage($e->getMessage() ?: Text::_('COM_TRANSLATIONS_TRANSLATE_ERROR'), 'error');
@@ -92,7 +100,7 @@ class TranslationController extends BaseController
 
         /** @var \Joomla\Component\Translations\Administrator\Model\TranslationModel $model */
         $model = $this->getModel('Translation');
-        $model->allowTranslation($sourceArticleId);
+        $model->allowTranslation($sourceArticleId, self::CONTENT_TYPE);
 
         $app->enqueueMessage(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_SUCCESS'), 'message');
         $this->setRedirect($queueUrl);

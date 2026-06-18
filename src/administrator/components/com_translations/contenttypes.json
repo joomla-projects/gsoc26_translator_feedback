@@ -1,6 +1,6 @@
 {
     "contentTypes": {
-        "article": {
+        "com_content.article": {
             "translatableFields": [
                 "title",
                 "introtext",

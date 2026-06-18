@@ -32,22 +32,6 @@ use Joomla\Registry\Registry;
 class TranslationModel extends BaseDatabaseModel
 {
     /**
-     * Content type stored in #__translations_queue for articles (matches QueueModel).
-     *
-     * @var    string
-     * @since  0.3.0
-     */
-    private const CONTENT_TYPE = 'com_content.article';
-
-    /**
-     * Key into the content type translation map (contenttypes.json) for articles.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const CONTENT_TYPE_KEY = 'article';
-
-    /**
      * The content type translation map, loaded once from contenttypes.json.
      *
      * @var    array|null
@@ -63,6 +47,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   integer                  $sourceItemId     The source item id.
      * @param   string                   $targetLanguage   The target language code, e.g. 'fr-FR'.
+     * @param   string                   $contentType      The content type alias, e.g. 'com_content.article'.
      * @param   CMSApplicationInterface  $application      The application, used to boot the component.
      *
      * @return  void
@@ -71,9 +56,9 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @since   0.3.0
      */
-    public function translate(int $sourceItemId, string $targetLanguage, CMSApplicationInterface $application): void
+    public function translate(int $sourceItemId, string $targetLanguage, string $contentType, CMSApplicationInterface $application): void
     {
-        $properties = $this->getContentTypeProperties(self::CONTENT_TYPE_KEY);
+        $properties = $this->getContentTypeProperties($contentType);
         $sourceItem = $this->getSourceItem($sourceItemId, (string) ($properties['table'] ?? ''));
 
         // An all-languages item is shown for every language, so there is nothing to translate.
@@ -85,28 +70,26 @@ class TranslationModel extends BaseDatabaseModel
             throw new \RuntimeException(\sprintf('Item %d is already in %s.', $sourceItemId, $targetLanguage));
         }
 
-        if ($this->isDoNotTranslate($sourceItemId)) {
+        if ($this->isDoNotTranslate($sourceItemId, $contentType)) {
             throw new \RuntimeException(\sprintf('Item %d is marked as not to be translated.', $sourceItemId));
         }
 
         $this->createDraft($sourceItem, $targetLanguage, $application, $properties);
-        $this->markReadyForReview($sourceItemId, $targetLanguage);
+        $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType);
     }
 
     /**
      * Clear the "no need for translation" flag on a source item's queue row.
      *
      * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    public function allowTranslation(int $sourceItemId): void
+    public function allowTranslation(int $sourceItemId, string $contentType): void
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->update($db->quoteName('#__translations_queue'))
@@ -160,16 +143,14 @@ class TranslationModel extends BaseDatabaseModel
      * is translatable.
      *
      * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
      *
      * @return  boolean  True when the item must not be translated.
      *
      * @since   0.3.0
      */
-    private function isDoNotTranslate(int $sourceItemId): bool
+    private function isDoNotTranslate(int $sourceItemId, string $contentType): bool
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('do_not_translate'))
@@ -466,14 +447,15 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   integer  $sourceItemId    The source item id.
      * @param   string   $targetLanguage  The target language code.
+     * @param   string   $contentType     The content type alias, e.g. 'com_content.article'.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    private function markReadyForReview(int $sourceItemId, string $targetLanguage): void
+    private function markReadyForReview(int $sourceItemId, string $targetLanguage, string $contentType): void
     {
-        $queueId     = $this->getOrCreateQueueId($sourceItemId);
+        $queueId     = $this->getOrCreateQueueId($sourceItemId, $contentType);
         $reviewState = 'review';
 
         // A state row may already exist from an earlier translation of this language.
@@ -520,16 +502,14 @@ class TranslationModel extends BaseDatabaseModel
      * A source item gets its row with its first translation.
      *
      * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
      *
      * @return  integer  The queue row id.
      *
      * @since   0.3.0
      */
-    private function getOrCreateQueueId(int $sourceItemId): int
+    private function getOrCreateQueueId(int $sourceItemId, string $contentType): int
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('id'))
@@ -547,7 +527,7 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         $queueRow = (object) [
-            'content_type' => self::CONTENT_TYPE,
+            'content_type' => $contentType,
             'content_id'   => $sourceItemId,
         ];
 
