@@ -18,13 +18,14 @@ use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\Factory\MVCFactoryInterface;
 use Joomla\CMS\MVC\Model\ListModel;
+use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
 
 /**
  * List model for the translation queue grid.
  *
- * One row per source-language article, target languages as columns.
- * getItems() then attaches each article's per language translation state
+ * One row per source item of the chosen content type, target languages as columns.
+ * getItems() then attaches each item's per language translation state
  * map via a single follow-up query.
  *
  * @since  0.1.0
@@ -32,12 +33,12 @@ use Joomla\Database\ParameterType;
 class QueueModel extends ListModel
 {
     /**
-     * Content type this queue handles (articles only, for now).
+     * Content type shown until another is chosen in the filter.
      *
      * @var    string
      * @since  0.1.0
      */
-    private const CONTENT_TYPE = 'com_content.article'; // for now
+    private const DEFAULT_CONTENT_TYPE = 'com_content.article';
 
     /**
      * Constructor.
@@ -91,6 +92,16 @@ class QueueModel extends ListModel
 
         // Read like the multi-selects (from the submitted filter array) so the Clear button resets it too.
         $this->setState('filter.noneed', $this->getSingleFilterState('noneed', $submittedFilter));
+
+        // The content type whose source items fill the grid; chosen by the queue tabs, defaults to articles.
+        $contentType = $this->getUserStateFromRequest($this->context . '.filter.contenttype', 'filter_contenttype', self::DEFAULT_CONTENT_TYPE, 'cmd');
+
+        // Fall back to the default when the request names a content type the queue does not handle.
+        if (!\in_array($contentType, ContentTypesHelper::getContentTypes(), true)) {
+            $contentType = self::DEFAULT_CONTENT_TYPE;
+        }
+
+        $this->setState('filter.contenttype', $contentType);
 
         // Source language: the content language originals are authored in (queue rows).
         // Configurable in config.xml, defaults to en-GB.
@@ -161,12 +172,13 @@ class QueueModel extends ListModel
         $id .= ':' . implode(',', (array) $this->getState('filter.status'));
         $id .= ':' . implode(',', (array) $this->getState('filter.languages'));
         $id .= ':' . $this->getState('filter.noneed');
+        $id .= ':' . $this->getState('filter.contenttype');
 
         return parent::getStoreId($id);
     }
 
     /**
-     * Build the list query: one row per source-language article (the grid rows).
+     * Build the list query: one row per source-language item (the grid rows).
      *
      * @return  \Joomla\Database\QueryInterface
      *
@@ -177,19 +189,23 @@ class QueueModel extends ListModel
         $db             = $this->getDatabase();
         $query          = $db->getQuery(true);
         $sourceLanguage = (string) $this->getState('source_language', 'en-GB');
-        $contentType    = self::CONTENT_TYPE;
+        $contentType    = (string) $this->getState('filter.contenttype', self::DEFAULT_CONTENT_TYPE);
+
+        $properties = ContentTypesHelper::getProperties($contentType);
+        $table      = (string) ($properties['table'] ?? '');
+        $stateField = (string) ($properties['stateField'] ?? '');
 
         $query->select(
             [
                 $db->quoteName('a.id'),
                 $db->quoteName('a.title'),
                 $db->quoteName('a.language'),
-                $db->quoteName('a.state'),
+                $db->quoteName('a.' . $stateField),
                 $db->quoteName('noNeed.do_not_translate'),
             ]
         )
-            ->from($db->quoteName('#__content', 'a'))
-            // LEFT join keeps articles that have no queue row; their do_not_translate is then NULL.
+            ->from($db->quoteName($table, 'a'))
+            // LEFT join keeps source items that have no queue row; their do_not_translate is then NULL.
             ->join(
                 'LEFT',
                 $db->quoteName('#__translations_queue', 'noNeed')
@@ -197,10 +213,10 @@ class QueueModel extends ListModel
                 . ' AND ' . $db->quoteName('noNeed.content_type') . ' = ' . $db->quote($contentType)
             )
             ->where($db->quoteName('a.language') . ' = :sourceLanguage')
-            ->where($db->quoteName('a.state') . ' <> -2')
+            ->where($db->quoteName('a.' . $stateField) . ' <> -2')
             ->bind(':sourceLanguage', $sourceLanguage);
 
-        // "No need for translation" articles are hidden by default; the filter can reveal or isolate them.
+        // "No need for translation" items are hidden by default; the filter can reveal or isolate them.
         $noNeed = (string) $this->getState('filter.noneed', '');
 
         if ($noNeed === 'only') {
@@ -212,7 +228,7 @@ class QueueModel extends ListModel
             );
         }
 
-        // Filter - search on article title(title LIKE), or "id:<n>" for direct lookup.
+        // Filter - search on the item title (title LIKE), or "id:<n>" for direct lookup.
         $search = $this->getState('filter.search');
 
         if (!empty($search)) {
@@ -230,7 +246,7 @@ class QueueModel extends ListModel
         // Filter - state (multi-select). The dropdown mixes two different kinds of value:
         //   - real states (pending / translating / review / approved / published), stored in translation_state;
         //   - '__none__', which is NOT stored anywhere, it is a UI-only flag for "no translation yet",
-        //     meaning the article has no state row at all.
+        //     meaning the item has no state row at all.
         // Because '__none__' is the absence of a row, it needs the opposite SQL (NOT EXISTS) from the real
         // states (EXISTS over an IN list). So we split the picks into the two cases and OR them back together.
         $statuses = array_values(
@@ -245,8 +261,8 @@ class QueueModel extends ListModel
             $realStatuses = array_values(array_filter($statuses, static fn($s) => $s !== '__none__'));
 
             if ($wantNone) {
-                // "No translation yet": the article has NO queue/state rows at all, so NOT EXISTS is the test.
-                // Correlated to the current grid row by content_id = a.id (content_type keeps it to articles).
+                // "No translation yet": the item has NO queue/state rows at all, so NOT EXISTS is the test.
+                // Correlated to the current grid row by content_id = a.id (content_type keeps it to the chosen type).
                 // The state JOIN isn't strictly needed here, but it mirrors subReal so the two read the same.
                 $subNone = $db->getQuery(true)
                     ->select('1')
@@ -261,7 +277,7 @@ class QueueModel extends ListModel
             }
 
             if (!empty($realStatuses)) {
-                // Real states: the article has AT LEAST ONE language whose state is in the picked list, so EXISTS.
+                // Real states: the item has AT LEAST ONE language whose state is in the picked list, so EXISTS.
                 // bindArray binds on the OUTER $query, not this subquery: the subquery is embedded into the main
                 // query as a string, so placeholders bound on it would be lost - binding on $query resolves them.
                 $placeholders = $query->bindArray($realStatuses, ParameterType::STRING);
@@ -353,9 +369,21 @@ class QueueModel extends ListModel
     }
 
     /**
-     * Load articles and attach each one's per language state map.
+     * The content types the queue can show, as a list of aliases for the tab strip.
      *
-     * @return  object[]  Articles with ->states[langCode] => status map.
+     * @return  string[]  Content type aliases, e.g. 'com_content.article'.
+     *
+     * @since   0.4.0
+     */
+    public function getContentTypes(): array
+    {
+        return ContentTypesHelper::getContentTypes();
+    }
+
+    /**
+     * Load items and attach each one's per language state map.
+     *
+     * @return  object[]  Items with ->states[langCode] => status map.
      *
      * @since   0.1.0
      */
@@ -374,7 +402,7 @@ class QueueModel extends ListModel
         }
 
         $db          = $this->getDatabase();
-        $contentType = self::CONTENT_TYPE;
+        $contentType = (string) $this->getState('filter.contenttype', self::DEFAULT_CONTENT_TYPE);
         $query       = $db->getQuery(true)
             ->select(
                 [
@@ -400,26 +428,26 @@ class QueueModel extends ListModel
     }
 
     /**
-     * Fold queue rows into each article's per language state map. Pure (no DB).
-     * Rows must be id ASC so a later row overwrites an earlier one (latest status wins per article+language).
+     * Fold queue rows into each item's per language state map. Pure (no DB).
+     * Rows must be id ASC so a later row overwrites an earlier one (latest status wins per item+language).
      *
-     * @param   object[]  $items  Source articles.
+     * @param   object[]  $items  Source items.
      * @param   object[]  $rows   Queue rows (content_id, target_language, status), id ASC.
      *
-     * @return  object[]  Articles with ->states map attached.
+     * @return  object[]  Items with ->states map attached.
      *
      * @since   0.1.0
      */
     protected static function applyStates(array $items, array $rows): array
     {
-        $statesByArticle = [];
+        $statesByItem = [];
 
         foreach ($rows as $row) {
-            $statesByArticle[(int) $row->content_id][$row->target_language] = $row->status;
+            $statesByItem[(int) $row->content_id][$row->target_language] = $row->status;
         }
 
         foreach ($items as $item) {
-            $item->states = $statesByArticle[(int) $item->id] ?? [];
+            $item->states = $statesByItem[(int) $item->id] ?? [];
         }
 
         return $items;

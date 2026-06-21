@@ -84,6 +84,14 @@ class HtmlView extends BaseHtmlView
     public $sourceLanguageTitle = '';
 
     /**
+     * Content type aliases for the queue tab strip.
+     *
+     * @var    string[]
+     * @since  0.4.0
+     */
+    public $contentTypes = [];
+
+    /**
      * Display the view.
      *
      * @param   string|null  $tpl  The name of the template file to parse.
@@ -104,6 +112,7 @@ class HtmlView extends BaseHtmlView
         $this->activeFilters       = $model->getActiveFilters();
         $this->targetLanguages     = $model->getTargetLanguages();
         $this->sourceLanguageTitle = $model->getSourceLanguageTitle();
+        $this->contentTypes        = $model->getContentTypes();
 
         $this->addToolbar();
 
