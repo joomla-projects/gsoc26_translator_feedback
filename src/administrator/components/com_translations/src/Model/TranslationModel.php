@@ -386,12 +386,10 @@ class TranslationModel extends BaseDatabaseModel
             }
         }
 
-        // The component builds the alias from the translated title; only suffix on a clash with the source.
-        $slug = ApplicationHelper::stringURLSafe((string) ($fields['title'] ?? ''), $targetLanguage);
-
-        if ($slug === $sourceItem['alias']) {
-            $draft['alias'] = $slug . '-' . strtolower($targetLanguage);
-        }
+        // Suffix on a clash with the source, otherwise let the component build the alias from the title.
+        // Set it even when empty, because com_menus derives a menu item's path from the alias during check.
+        $slug           = ApplicationHelper::stringURLSafe((string) ($fields['title'] ?? ''), $targetLanguage);
+        $draft['alias'] = $slug === $sourceItem['alias'] ? $slug . '-' . strtolower($targetLanguage) : '';
 
         // Carry the source's untranslated structural fields onto the draft unchanged.
         foreach ((array) ($properties['draftCopyFields'] ?? []) as $field) {
@@ -400,6 +398,23 @@ class TranslationModel extends BaseDatabaseModel
 
         // Keep the draft unpublished until a translator approves it.
         $draft[(string) ($properties['stateField'] ?? '')] = 0;
+
+        // Force any fields the draft must hold at a fixed value, e.g. a translated menu item is never the home item.
+        foreach ((array) ($properties['draftForceFields'] ?? []) as $field => $value) {
+            $draft[$field] = $value;
+        }
+
+        // A content type kept in language specific containers (a menu item lives in a menu) gets the target
+        // language container, created when it does not exist yet.
+        if (isset($properties['languageMenu'])) {
+            $menuField         = (string) $properties['languageMenu'];
+            $draft[$menuField] = $this->deriveLanguageMenu(
+                $component,
+                (string) ($sourceItem[$menuField] ?? ''),
+                (string) $sourceItem['language'],
+                $targetLanguage
+            );
+        }
 
         // com_content combines intro and full text into one body field; only relevant when those fields exist.
         if (isset($fields['introtext']) || isset($fields['fulltext'])) {
@@ -422,6 +437,54 @@ class TranslationModel extends BaseDatabaseModel
             $associations[$targetLanguage] = (int) $model->getState($model->getName() . '.id');
             $this->writeAssociations($associations, $context);
         }
+    }
+
+    /**
+     * Derive a menu item's target language menu, creating that menu when it does not exist.
+     *
+     * The menu of a source item carries no language association, so the target language menu is named by
+     * stripping any source language suffix from the source menutype and appending the target language code
+     * ("mainmenu" or "mainmenu-en-gb" becomes "mainmenu-fr-fr"). The menu is created when missing so the
+     * translated item has somewhere to live.
+     *
+     * @param   ComponentInterface&MVCFactoryServiceInterface  $component        The booted managing component.
+     * @param   string                                         $sourceMenutype  The source item's menutype.
+     * @param   string                                         $sourceLanguage  The source item's language code.
+     * @param   string                                         $targetLanguage  The target language code.
+     *
+     * @return  string  The target language menutype.
+     *
+     * @throws  \RuntimeException  If the menu cannot be created.
+     *
+     * @since   0.4.0
+     */
+    private function deriveLanguageMenu(
+        ComponentInterface&MVCFactoryServiceInterface $component,
+        string $sourceMenutype,
+        string $sourceLanguage,
+        string $targetLanguage
+    ): string {
+        $sourceSuffix = '-' . strtolower($sourceLanguage);
+        $base         = str_ends_with($sourceMenutype, $sourceSuffix)
+            ? substr($sourceMenutype, 0, -strlen($sourceSuffix))
+            : $sourceMenutype;
+        $menutype     = $base . '-' . strtolower($targetLanguage);
+
+        /** @var \Joomla\CMS\Table\MenuType $menu */
+        $menu = $component->getMVCFactory()->createTable('MenuType', 'Administrator');
+
+        // Nothing to create when the target language menu already exists.
+        if ($menu->load(['menutype' => $menutype])) {
+            return $menutype;
+        }
+
+        $menu->bind(['menutype' => $menutype, 'title' => $menutype, 'client_id' => 0]);
+
+        if (!$menu->check() || !$menu->store()) {
+            throw new \RuntimeException(\sprintf('Could not create the %s menu.', $menutype));
+        }
+
+        return $menutype;
     }
 
     /**

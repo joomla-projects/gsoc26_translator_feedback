@@ -51,6 +51,19 @@
             "associationsByModel": false,
             "draftCopyFields": ["parent_id", "access", "created_user_id"],
             "stateField": "published"
+        },
+        "com_menus.item": {
+            "translatableFields": [
+                "title"
+            ],
+            "component": "com_menus",
+            "model": "Item",
+            "table": "#__menu",
+            "context_associations": "com_menus.item",
+            "draftCopyFields": ["link", "type", "component_id", "browserNav", "access", "img", "template_style_id", "params"],
+            "stateField": "published",
+            "draftForceFields": { "home": 0, "parent_id": 1 },
+            "languageMenu": "menutype"
         }
     }
 }
