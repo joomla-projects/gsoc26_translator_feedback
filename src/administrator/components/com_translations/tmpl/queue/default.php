@@ -20,9 +20,26 @@ use Joomla\CMS\Session\Session;
 
 $listDirn  = $this->escape($this->state->get('list.direction'));
 $listOrder = $this->escape($this->state->get('list.ordering'));
+
+$contentType = (string) $this->state->get('filter.contenttype');
+
+// The feedback editor handles articles only for now; other types show their status without a link.
+$editorSupported = $contentType === 'com_content.article';
 ?>
 
 <form action="<?php echo Route::_('index.php?option=com_translations&view=queue'); ?>" method="post" name="adminForm" id="adminForm">
+
+    <ul class="nav nav-tabs mb-3">
+        <?php foreach ($this->contentTypes as $tabContentType) : ?>
+            <?php $isActive = $tabContentType === $contentType; ?>
+            <li class="nav-item">
+                <a class="nav-link<?php echo $isActive ? ' active' : ''; ?>"<?php echo $isActive ? ' aria-current="page"' : ''; ?>
+                    href="<?php echo Route::_('index.php?option=com_translations&view=queue&filter_contenttype=' . urlencode($tabContentType)); ?>">
+                    <?php echo $this->escape(Text::_('COM_TRANSLATIONS_CONTENTTYPE_' . strtoupper(str_replace('.', '_', $tabContentType)))); ?>
+                </a>
+            </li>
+        <?php endforeach; ?>
+    </ul>
 
     <div class="row">
         <div class="col-md-12">
@@ -64,7 +81,7 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                             <td class="text-center" colspan="<?php echo \count($this->targetLanguages); ?>">
                                 <span class="badge bg-dark me-2"><?php echo Text::_('COM_TRANSLATIONS_STATUS_NO_NEED'); ?></span>
                                 <a class="btn btn-sm btn-outline-secondary"
-                                    href="<?php echo Route::_('index.php?option=com_translations&task=translation.allowTranslation&id=' . (int) $item->id . '&' . Session::getFormToken() . '=1'); ?>"
+                                    href="<?php echo Route::_('index.php?option=com_translations&task=translation.allowTranslation&id=' . (int) $item->id . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                     title="<?php echo $this->escape(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_DESC')); ?>">
                                     <?php echo Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION'); ?>
                                 </a>
@@ -73,7 +90,7 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                         <?php foreach ($this->targetLanguages as $langCode => $language) : ?>
                             <?php $status = $item->states[$langCode] ?? ''; ?>
                             <?php // Only review/approved cells open the translation feedback view (shown as a link)?>
-                            <?php $editable    = \in_array($status, ['review', 'approved'], true); ?>
+                            <?php $editable    = $editorSupported && \in_array($status, ['review', 'approved'], true); ?>
                             <?php $statusLabel = $status !== '' ? Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)) : Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?>
                             <td class="text-center">
                                 <?php if ($editable) : ?>
@@ -85,7 +102,7 @@ $listOrder = $this->escape($this->state->get('list.ordering'));
                                 <?php else : ?>
                                     <?php // An absent state means ready for translation, so the badge triggers it. ?>
                                     <a class="badge bg-secondary text-decoration-none"
-                                        href="<?php echo Route::_('index.php?option=com_translations&task=translation.translate&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&' . Session::getFormToken() . '=1'); ?>"
+                                        href="<?php echo Route::_('index.php?option=com_translations&task=translation.translate&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape(Text::_('COM_TRANSLATIONS_TRANSLATE_NOW')); ?>">
                                         <?php echo $this->escape($statusLabel); ?>
                                     </a>

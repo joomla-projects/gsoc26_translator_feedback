@@ -20,6 +20,7 @@ use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
+use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
@@ -32,14 +33,6 @@ use Joomla\Registry\Registry;
  */
 class TranslationModel extends BaseDatabaseModel
 {
-    /**
-     * The content type translation map, loaded once from contenttypes.json.
-     *
-     * @var    array|null
-     * @since  0.4.0
-     */
-    private ?array $contentTypePropertiesMap = null;
-
     /**
      * Translate a source item into one target language.
      *
@@ -59,7 +52,7 @@ class TranslationModel extends BaseDatabaseModel
      */
     public function translate(int $sourceItemId, string $targetLanguage, string $contentType, CMSApplicationInterface $application): void
     {
-        $properties = $this->getContentTypeProperties($contentType);
+        $properties = ContentTypesHelper::getProperties($contentType);
         $sourceItem = $this->getSourceItem($sourceItemId, (string) ($properties['table'] ?? ''));
 
         // Some tables hold several extensions' items; only translate the mapped extension.
@@ -169,43 +162,6 @@ class TranslationModel extends BaseDatabaseModel
         $db->setQuery($query);
 
         return (bool) $db->loadResult();
-    }
-
-    /**
-     * Read a content type's translation properties from the map file.
-     *
-     * The map (contenttypes.json) is read once and lists, per content type, which fields
-     * are translatable plus the contexts and relations the later steps need.
-     *
-     * @param   string  $contentTypeKey  The content type key.
-     *
-     * @return  array  The content type's properties.
-     *
-     * @throws  \RuntimeException  If the map file is missing or the content type is not mapped.
-     *
-     * @since   0.4.0
-     */
-    private function getContentTypeProperties(string $contentTypeKey): array
-    {
-        if ($this->contentTypePropertiesMap === null) {
-            $path = JPATH_ADMINISTRATOR . '/components/com_translations/contenttypes.json';
-
-            if (!is_file($path)) {
-                throw new \RuntimeException('The content type translation map (contenttypes.json) is missing.');
-            }
-
-            $decoded = json_decode((string) file_get_contents($path), true);
-
-            $this->contentTypePropertiesMap = (\is_array($decoded) && isset($decoded['contentTypes']) && \is_array($decoded['contentTypes']))
-                ? $decoded['contentTypes']
-                : [];
-        }
-
-        if (!isset($this->contentTypePropertiesMap[$contentTypeKey])) {
-            throw new \RuntimeException(\sprintf('No translation properties mapped for content type "%s".', $contentTypeKey));
-        }
-
-        return (array) $this->contentTypePropertiesMap[$contentTypeKey];
     }
 
     /**

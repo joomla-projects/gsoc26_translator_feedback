@@ -19,9 +19,9 @@ use Joomla\CMS\MVC\Controller\BaseController;
 use Joomla\CMS\Router\Route;
 
 /**
- * Controller for translating queued articles.
+ * Controller for translating queued items.
  *
- * The translate task turns one source article into an unpublished draft for one
+ * The translate task turns one source item into an unpublished draft for one
  * target language; the work is done by TranslationModel.
  *
  * @since  0.3.0
@@ -29,15 +29,7 @@ use Joomla\CMS\Router\Route;
 class TranslationController extends BaseController
 {
     /**
-     * Content type the queue trigger translates; comes from the request once the queue carries more than articles.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const CONTENT_TYPE = 'com_content.article';
-
-    /**
-     * Translate one source article into one target language.
+     * Translate one source item into one target language.
      *
      * The trigger is a plain link, so the form token is checked on the query string.
      *
@@ -49,12 +41,13 @@ class TranslationController extends BaseController
     {
         $this->checkToken('get');
 
-        $app             = $this->app;
-        $sourceArticleId = $this->input->getInt('id');
-        $targetLanguage  = $this->input->getCmd('target');
-        $queueUrl        = Route::_('index.php?option=com_translations&view=queue', false);
+        $app            = $this->app;
+        $sourceItemId   = $this->input->getInt('id');
+        $targetLanguage = $this->input->getCmd('target');
+        $contentType    = $this->input->getCmd('contentType');
+        $queueUrl       = Route::_('index.php?option=com_translations&view=queue', false);
 
-        if ($sourceArticleId === 0 || $targetLanguage === '') {
+        if ($sourceItemId === 0 || $targetLanguage === '' || $contentType === '') {
             $app->enqueueMessage(Text::_('COM_TRANSLATIONS_TRANSLATE_ERROR'), 'error');
             $this->setRedirect($queueUrl);
 
@@ -65,7 +58,7 @@ class TranslationController extends BaseController
         $model = $this->getModel('Translation');
 
         try {
-            $model->translate($sourceArticleId, $targetLanguage, self::CONTENT_TYPE, $app);
+            $model->translate($sourceItemId, $targetLanguage, $contentType, $app);
             $app->enqueueMessage(Text::sprintf('COM_TRANSLATIONS_TRANSLATE_SUCCESS', $targetLanguage), 'message');
         } catch (\Throwable $e) {
             $app->enqueueMessage($e->getMessage() ?: Text::_('COM_TRANSLATIONS_TRANSLATE_ERROR'), 'error');
@@ -75,7 +68,7 @@ class TranslationController extends BaseController
     }
 
     /**
-     * Clear the "no need for translation" flag so an article can be translated again.
+     * Clear the "no need for translation" flag so an item can be translated again.
      *
      * The trigger is a plain link, so the form token is checked on the query string.
      *
@@ -87,11 +80,12 @@ class TranslationController extends BaseController
     {
         $this->checkToken('get');
 
-        $app             = $this->app;
-        $sourceArticleId = $this->input->getInt('id');
-        $queueUrl        = Route::_('index.php?option=com_translations&view=queue', false);
+        $app          = $this->app;
+        $sourceItemId = $this->input->getInt('id');
+        $contentType  = $this->input->getCmd('contentType');
+        $queueUrl     = Route::_('index.php?option=com_translations&view=queue', false);
 
-        if ($sourceArticleId === 0) {
+        if ($sourceItemId === 0 || $contentType === '') {
             $app->enqueueMessage(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_ERROR'), 'error');
             $this->setRedirect($queueUrl);
 
@@ -100,7 +94,7 @@ class TranslationController extends BaseController
 
         /** @var \Joomla\Component\Translations\Administrator\Model\TranslationModel $model */
         $model = $this->getModel('Translation');
-        $model->allowTranslation($sourceArticleId, self::CONTENT_TYPE);
+        $model->allowTranslation($sourceItemId, $contentType);
 
         $app->enqueueMessage(Text::_('COM_TRANSLATIONS_ALLOW_TRANSLATION_SUCCESS'), 'message');
         $this->setRedirect($queueUrl);
