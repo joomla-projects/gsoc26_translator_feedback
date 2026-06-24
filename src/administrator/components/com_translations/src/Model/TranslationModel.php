@@ -14,6 +14,7 @@ namespace Joomla\Component\Translations\Administrator\Model;
 \defined('_JEXEC') or die;
 // phpcs:enable PSR1.Files.SideEffects
 
+use Joomla\CMS\Application\ApplicationHelper;
 use Joomla\CMS\Application\CMSApplicationInterface;
 use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
@@ -60,6 +61,12 @@ class TranslationModel extends BaseDatabaseModel
     {
         $properties = $this->getContentTypeProperties($contentType);
         $sourceItem = $this->getSourceItem($sourceItemId, (string) ($properties['table'] ?? ''));
+
+        // Some tables hold several extensions' items; only translate the mapped extension.
+        if (isset($properties['limitToExtension'])
+            && ($sourceItem['extension'] ?? null) !== $properties['limitToExtension']) {
+            throw new \RuntimeException(\sprintf('Item %d is outside the %s extension.', $sourceItemId, $properties['limitToExtension']));
+        }
 
         // An all-languages item is shown for every language, so there is nothing to translate.
         if ($sourceItem['language'] === '*') {
@@ -329,8 +336,8 @@ class TranslationModel extends BaseDatabaseModel
      * Create the unpublished draft for one target language.
      *
      * The draft is saved through the managing component's model so versioning, events and
-     * association handling run exactly as for a hand created item. Passing the source
-     * item under 'associations' makes core write the #__associations link itself.
+     * associations run as for a hand created item. A model with an associationsContext
+     * writes the #__associations link itself; tags, whose model does not, get it written here.
      *
      * @param   array                    $sourceItem      The source item's column values.
      * @param   string                   $targetLanguage  The target language code.
@@ -359,25 +366,55 @@ class TranslationModel extends BaseDatabaseModel
 
         $fields = $this->packTranslatedFields($sourceItem, $translatableFields, $translated);
 
-        // The draft must be saved together with the source's existing association group,
-        // otherwise core re-keys the group and earlier drafts fall out of it.
-        $associations = $this->getAssociationGroup((int) $sourceItem['id'], (string) ($properties['context_associations'] ?? ''), (string) ($properties['table'] ?? ''));
-
-        $associations[$sourceItem['language']] = (int) $sourceItem['id'];
-
         $draft = array_merge($fields, [
-            'id'           => 0,
-            // Aliases are unique per category regardless of language, so the draft cannot reuse the source's.
-            'alias'        => $sourceItem['alias'] . '-' . strtolower($targetLanguage),
-            'language'     => $targetLanguage,
-            'catid'        => (int) $sourceItem['catid'],
-            // Keep the draft unpublished until a translator approves it.
-            'state'        => 0,
-            'access'       => (int) $sourceItem['access'],
-            'created_by'   => (int) $sourceItem['created_by'],
-            // Joomla links the draft into this association group on save.
-            'associations' => $associations,
+            'id'       => 0,
+            'language' => $targetLanguage,
         ]);
+
+        // Join the draft to the source's existing association group rather than a fresh one.
+        $context                 = (string) ($properties['context_associations'] ?? '');
+        $modelWritesAssociations = (bool) ($properties['associationsByModel'] ?? true);
+        $associations            = [];
+
+        if ($context !== '') {
+            $associations = $this->getAssociationGroup((int) $sourceItem['id'], $context, (string) ($properties['table'] ?? ''));
+            $associations[$sourceItem['language']] = (int) $sourceItem['id'];
+
+            // A model with an associationsContext writes the link itself on save.
+            if ($modelWritesAssociations) {
+                $draft['associations'] = $associations;
+            }
+        }
+
+        // Suffix on a clash with the source, otherwise let the component build the alias from the title.
+        // Set it even when empty, because com_menus derives a menu item's path from the alias during check.
+        $slug           = ApplicationHelper::stringURLSafe((string) ($fields['title'] ?? ''), $targetLanguage);
+        $draft['alias'] = $slug === $sourceItem['alias'] ? $slug . '-' . strtolower($targetLanguage) : '';
+
+        // Carry the source's untranslated structural fields onto the draft unchanged.
+        foreach ((array) ($properties['draftCopyFields'] ?? []) as $field) {
+            $draft[$field] = $sourceItem[$field] ?? null;
+        }
+
+        // Keep the draft unpublished until a translator approves it.
+        $draft[(string) ($properties['stateField'] ?? '')] = 0;
+
+        // Force any fields the draft must hold at a fixed value, e.g. a translated menu item is never the home item.
+        foreach ((array) ($properties['draftForceFields'] ?? []) as $field => $value) {
+            $draft[$field] = $value;
+        }
+
+        // A content type kept in language specific containers (a menu item lives in a menu) gets the target
+        // language container, created when it does not exist yet.
+        if (isset($properties['languageMenu'])) {
+            $menuField         = (string) $properties['languageMenu'];
+            $draft[$menuField] = $this->deriveLanguageMenu(
+                $component,
+                (string) ($sourceItem[$menuField] ?? ''),
+                (string) $sourceItem['language'],
+                $targetLanguage
+            );
+        }
 
         // com_content combines intro and full text into one body field; only relevant when those fields exist.
         if (isset($fields['introtext']) || isset($fields['fulltext'])) {
@@ -394,6 +431,60 @@ class TranslationModel extends BaseDatabaseModel
                 \sprintf('Could not create the %s draft for item %d.', $targetLanguage, (int) $sourceItem['id'])
             );
         }
+
+        // A model without an associationsContext (tags) leaves the link unwritten, so write it here.
+        if ($context !== '' && !$modelWritesAssociations) {
+            $associations[$targetLanguage] = (int) $model->getState($model->getName() . '.id');
+            $this->writeAssociations($associations, $context);
+        }
+    }
+
+    /**
+     * Derive a menu item's target language menu, creating that menu when it does not exist.
+     *
+     * The menu of a source item carries no language association, so the target language menu is named by
+     * stripping any source language suffix from the source menutype and appending the target language code
+     * ("mainmenu" or "mainmenu-en-gb" becomes "mainmenu-fr-fr"). The menu is created when missing so the
+     * translated item has somewhere to live.
+     *
+     * @param   ComponentInterface&MVCFactoryServiceInterface  $component        The booted managing component.
+     * @param   string                                         $sourceMenutype  The source item's menutype.
+     * @param   string                                         $sourceLanguage  The source item's language code.
+     * @param   string                                         $targetLanguage  The target language code.
+     *
+     * @return  string  The target language menutype.
+     *
+     * @throws  \RuntimeException  If the menu cannot be created.
+     *
+     * @since   0.4.0
+     */
+    private function deriveLanguageMenu(
+        ComponentInterface&MVCFactoryServiceInterface $component,
+        string $sourceMenutype,
+        string $sourceLanguage,
+        string $targetLanguage
+    ): string {
+        $sourceSuffix = '-' . strtolower($sourceLanguage);
+        $base         = str_ends_with($sourceMenutype, $sourceSuffix)
+            ? substr($sourceMenutype, 0, -strlen($sourceSuffix))
+            : $sourceMenutype;
+        $menutype     = $base . '-' . strtolower($targetLanguage);
+
+        /** @var \Joomla\CMS\Table\MenuType $menu */
+        $menu = $component->getMVCFactory()->createTable('MenuType', 'Administrator');
+
+        // Nothing to create when the target language menu already exists.
+        if ($menu->load(['menutype' => $menutype])) {
+            return $menutype;
+        }
+
+        $menu->bind(['menutype' => $menutype, 'title' => $menutype, 'client_id' => 0]);
+
+        if (!$menu->check() || !$menu->store()) {
+            throw new \RuntimeException(\sprintf('Could not create the %s menu.', $menutype));
+        }
+
+        return $menutype;
     }
 
     /**
@@ -436,6 +527,57 @@ class TranslationModel extends BaseDatabaseModel
         $db->setQuery($query);
 
         return $db->loadAssocList('language', 'id');
+    }
+
+    /**
+     * Write the source item's association group to #__associations directly.
+     *
+     * Mirrors the write in AdminModel::save(): the items are removed and re-inserted
+     * under one shared key, so every language version stays in one group. Needed for
+     * content types whose model sets no associationsContext (tags), where save() leaves
+     * the link unwritten.
+     *
+     * @param   array   $idsByLanguage  The group's item ids keyed by language, including the new draft.
+     * @param   string  $context        The associations context, e.g. 'com_tags.item'.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    private function writeAssociations(array $idsByLanguage, string $context): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $idsByLanguage)));
+
+        // A lone item has nothing to associate with.
+        if (\count($ids) < 2) {
+            return;
+        }
+
+        $db = $this->getDatabase();
+
+        // Clear the items' current rows so the whole group is re-keyed in one place.
+        $query = $db->getQuery(true)
+            ->delete($db->quoteName('#__associations'))
+            ->where($db->quoteName('context') . ' = :context')
+            ->whereIn($db->quoteName('id'), $ids, ParameterType::INTEGER)
+            ->bind(':context', $context, ParameterType::STRING);
+        $db->setQuery($query);
+        $db->execute();
+
+        // One shared key ties the language versions together, the way core keys them.
+        $key   = md5((string) json_encode($idsByLanguage));
+        $query = $db->getQuery(true)
+            ->insert($db->quoteName('#__associations'))
+            ->columns($db->quoteName(['id', 'context', 'key']));
+
+        foreach ($ids as $id) {
+            $query->values(
+                implode(',', $query->bindArray([$id, $context, $key], [ParameterType::INTEGER, ParameterType::STRING, ParameterType::STRING]))
+            );
+        }
+
+        $db->setQuery($query);
+        $db->execute();
     }
 
     /**

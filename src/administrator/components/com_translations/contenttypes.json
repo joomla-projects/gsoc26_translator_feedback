@@ -13,11 +13,57 @@
             "component": "com_content",
             "model": "Article",
             "table": "#__content",
-            "type_id": "1",
-            "context_custom_fields": "com_content.article",
             "context_associations": "com_content.item",
+            "draftCopyFields": ["catid", "access", "created_by"],
+            "stateField": "state",
             "associatedFields": { "catid": { "contentType": "category" } },
             "m2m_relation": "tag"
+        },
+        "com_categories.category": {
+            "translatableFields": [
+                "title",
+                "note",
+                "description",
+                "metadesc",
+                "metakey"
+            ],
+            "component": "com_categories",
+            "model": "Category",
+            "table": "#__categories",
+            "limitToExtension": "com_content",
+            "context_associations": "com_categories.item",
+            "draftCopyFields": ["parent_id", "extension", "access", "created_user_id"],
+            "stateField": "published"
+        },
+        "com_tags.tag": {
+            "translatableFields": [
+                "title",
+                "note",
+                "description",
+                "metadesc",
+                "metakey",
+                { "images": ["image_intro_alt", "image_intro_caption", "image_fulltext_alt", "image_fulltext_caption"] }
+            ],
+            "component": "com_tags",
+            "model": "Tag",
+            "table": "#__tags",
+            "context_associations": "com_tags.item",
+            "associationsByModel": false,
+            "draftCopyFields": ["parent_id", "access", "created_user_id"],
+            "stateField": "published"
+        },
+        "com_menus.item": {
+            "translatableFields": [
+                "title"
+            ],
+            "component": "com_menus",
+            "model": "Item",
+            "table": "#__menu",
+            "context_associations": "com_menus.item",
+            "draftCopyFields": ["link", "type", "component_id", "browserNav", "access", "img", "template_style_id", "params"],
+            "stateField": "published",
+            "draftForceFields": { "home": 0, "parent_id": 1 },
+            "languageMenu": "menutype"
         }
     }
 }
