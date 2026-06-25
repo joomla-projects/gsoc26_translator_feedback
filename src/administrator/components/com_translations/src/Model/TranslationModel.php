@@ -316,6 +316,12 @@ class TranslationModel extends BaseDatabaseModel
         /** @var AdminModel $model */
         $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
 
+        // Ignoring the request skips populateState, so set the state the model still derives from it;
+        // a category reads its extension from state to confirm it can be associated.
+        foreach ((array) ($properties['modelState'] ?? []) as $stateKey => $stateValue) {
+            $model->setState($stateKey, $stateValue);
+        }
+
         // Hand the whole collection over together, then map each translated value back to its field.
         $translatableFields = (array) ($properties['translatableFields'] ?? []);
         $translated         = $this->mockTranslate($this->collectTranslatableStrings($sourceItem, $translatableFields), $targetLanguage);
