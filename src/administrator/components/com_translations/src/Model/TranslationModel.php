@@ -21,6 +21,7 @@ use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
+use Joomla\Component\Fields\Administrator\Model\FieldModel;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
@@ -245,7 +246,7 @@ class TranslationModel extends BaseDatabaseModel
      * @param   array  $sourceItem  The source item's column values.
      * @param   array  $properties  The content type's properties from the map.
      *
-     * @return  array  Per field name, ['value' => raw value, 'translatable' => bool].
+     * @return  array  Per field name, ['id' => field id, 'value' => raw value, 'translatable' => bool].
      *
      * @since   0.4.0
      */
@@ -267,12 +268,96 @@ class TranslationModel extends BaseDatabaseModel
             }
 
             $customFields[$field->name] = [
+                'id'           => (int) $field->id,
                 'value'        => $value,
                 'translatable' => \in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true),
             ];
         }
 
         return $customFields;
+    }
+
+    /**
+     * Give a translated category the source category's directly assigned custom fields.
+     *
+     * A category's custom fields are scoped to the category id, so a field assigned only to the source
+     * category is not assigned to the new draft and so is not stored when the draft is saved. The draft is
+     * assigned those same fields here and their values written. Global and ancestor-assigned fields already
+     * reach the draft through the save, so they are skipped.
+     *
+     * @param   integer                                                          $sourceId           The source category id.
+     * @param   integer                                                          $draftId            The translated draft category id.
+     * @param   array<string, array{id: int, value: string, translatable: bool}> $customFields       The collected custom fields.
+     * @param   array<string, string>                                            $draftCustomFields  The values to store, keyed by field name.
+     * @param   CMSApplicationInterface                                          $application        The application, used to boot com_fields.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    private function copyDirectCustomFields(int $sourceId, int $draftId, array $customFields, array $draftCustomFields, CMSApplicationInterface $application): void
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('field_id'))
+            ->from($db->quoteName('#__fields_categories'))
+            ->where($db->quoteName('category_id') . ' = :sourceId')
+            ->bind(':sourceId', $sourceId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        $directFieldIds = array_map('intval', $db->loadColumn());
+
+        if ($directFieldIds === []) {
+            return;
+        }
+
+        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
+        $component = $application->bootComponent('com_fields');
+
+        /** @var FieldModel $fieldModel */
+        $fieldModel = $component->getMVCFactory()->createModel('Field', 'Administrator', ['ignore_request' => true]);
+
+        foreach ($customFields as $name => $customField) {
+            $fieldId = (int) $customField['id'];
+
+            // Global and ancestor-assigned fields are already on the draft; only direct ones need copying.
+            if (!\in_array($fieldId, $directFieldIds, true)) {
+                continue;
+            }
+
+            // Assign the draft to the field, guarding the composite key against a re-translation.
+            if (!$this->categoryHasField($fieldId, $draftId)) {
+                $assignment = (object) ['field_id' => $fieldId, 'category_id' => $draftId];
+                $db->insertObject('#__fields_categories', $assignment);
+            }
+
+            $fieldModel->setFieldValue((string) $fieldId, (string) $draftId, $draftCustomFields[$name]);
+        }
+    }
+
+    /**
+     * Whether a custom field is already assigned to a category.
+     *
+     * @param   integer  $fieldId     The field id.
+     * @param   integer  $categoryId  The category id.
+     *
+     * @return  boolean
+     *
+     * @since   0.4.0
+     */
+    private function categoryHasField(int $fieldId, int $categoryId): bool
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('COUNT(*)')
+            ->from($db->quoteName('#__fields_categories'))
+            ->where($db->quoteName('field_id') . ' = :fieldId')
+            ->where($db->quoteName('category_id') . ' = :categoryId')
+            ->bind(':fieldId', $fieldId, ParameterType::INTEGER)
+            ->bind(':categoryId', $categoryId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return (bool) $db->loadResult();
     }
 
     /**
@@ -480,6 +565,18 @@ class TranslationModel extends BaseDatabaseModel
         if ($context !== '' && !$modelWritesAssociations) {
             $associations[$targetLanguage] = (int) $model->getState($model->getName() . '.id');
             $this->writeAssociations($associations, $context);
+        }
+
+        // A category's custom fields are scoped to its own id, so a field assigned only to the source
+        // category does not reach the new draft on save; copy those assignments and store their values.
+        if (!empty($properties['copyCustomFieldAssignments']) && $customFields !== []) {
+            $this->copyDirectCustomFields(
+                (int) $sourceItem['id'],
+                (int) $model->getState($model->getName() . '.id'),
+                $customFields,
+                $draftCustomFields,
+                $application
+            );
         }
     }
 
