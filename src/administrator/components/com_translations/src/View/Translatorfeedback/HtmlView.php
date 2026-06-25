@@ -22,7 +22,7 @@ use Joomla\CMS\Toolbar\ToolbarHelper;
 /**
  * Side-by-side translation feedback view.
  *
- * Displays a source article (left) and its translation in one target language (right),
+ * Displays a source item (left) and its translation in one target language (right),
  * with the translation as the editable surface.
  *
  * @since  0.2.0
@@ -85,7 +85,7 @@ class HtmlView extends BaseHtmlView
         ToolbarHelper::title(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_TITLE'), 'comments');
 
         // Nothing to save until there is a translation to edit.
-        if ($this->item->translation_article === null) {
+        if ($this->item->translation_item === null) {
             return;
         }
 

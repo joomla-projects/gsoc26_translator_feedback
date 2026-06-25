@@ -22,9 +22,6 @@ $listDirn  = $this->escape($this->state->get('list.direction'));
 $listOrder = $this->escape($this->state->get('list.ordering'));
 
 $contentType = (string) $this->state->get('filter.contenttype');
-
-// The feedback editor handles articles only for now; other types show their status without a link.
-$editorSupported = $contentType === 'com_content.article';
 ?>
 
 <form action="<?php echo Route::_('index.php?option=com_translations&view=queue'); ?>" method="post" name="adminForm" id="adminForm">
@@ -90,11 +87,11 @@ $editorSupported = $contentType === 'com_content.article';
                         <?php foreach ($this->targetLanguages as $langCode => $language) : ?>
                             <?php $status = $item->states[$langCode] ?? ''; ?>
                             <?php // Only review/approved cells open the translation feedback view (shown as a link)?>
-                            <?php $editable    = $editorSupported && \in_array($status, ['review', 'approved'], true); ?>
+                            <?php $editable    = \in_array($status, ['review', 'approved'], true); ?>
                             <?php $statusLabel = $status !== '' ? Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)) : Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?>
                             <td class="text-center">
                                 <?php if ($editable) : ?>
-                                    <a href="<?php echo Route::_('index.php?option=com_translations&view=translatorfeedback&layout=edit&id=' . (int) $item->id . '&target=' . urlencode($langCode)); ?>">
+                                    <a href="<?php echo Route::_('index.php?option=com_translations&view=translatorfeedback&layout=edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType)); ?>">
                                         <?php echo $this->escape($statusLabel); ?>
                                     </a>
                                 <?php elseif ($status !== '') : ?>

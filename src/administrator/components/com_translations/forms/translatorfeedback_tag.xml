@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fieldset name="content" label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SECTION_CONTENT">
+		<field
+			name="translation_title"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_TITLE"
+		/>
+		<field
+			name="translation_description"
+			type="editor"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_DESCRIPTION"
+			buttons="true"
+		/>
+	</fieldset>
+	<fieldset name="metadata" label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SECTION_METADATA">
+		<field
+			name="translation_metadesc"
+			type="textarea"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_METADESC"
+			rows="3"
+		/>
+		<field
+			name="translation_metakey"
+			type="textarea"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_METAKEY"
+			rows="3"
+		/>
+		<field
+			name="translation_note"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_NOTE"
+		/>
+	</fieldset>
+	<fieldset name="images" label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SECTION_IMAGES">
+		<field
+			name="translation_image_intro_alt"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_IMAGE_INTRO_ALT"
+		/>
+		<field
+			name="translation_image_intro_caption"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_IMAGE_INTRO_CAPTION"
+		/>
+		<field
+			name="translation_image_fulltext_alt"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_IMAGE_FULLTEXT_ALT"
+		/>
+		<field
+			name="translation_image_fulltext_caption"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_IMAGE_FULLTEXT_CAPTION"
+		/>
+	</fieldset>
+</form>

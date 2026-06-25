@@ -46,6 +46,7 @@ class TranslatorfeedbackController extends BaseController
         $app            = $this->app;
         $contentId      = $this->input->getInt('id');
         $targetLanguage = $this->input->getCmd('target');
+        $contentType    = $this->input->getCmd('contentType');
 
         // Editor fields carry HTML, read raw so the markup is preserved (admin only screen).
         $form = $this->input->post->get('jform', [], 'raw');
@@ -69,7 +70,7 @@ class TranslatorfeedbackController extends BaseController
         }
 
         $url = 'index.php?option=com_translations&view=translatorfeedback&layout=edit&id=' . $contentId
-            . '&target=' . urlencode($targetLanguage);
+            . '&target=' . urlencode($targetLanguage) . '&contentType=' . urlencode($contentType);
 
         $this->setRedirect(Route::_($url, false));
     }

@@ -17,23 +17,24 @@ namespace Joomla\Component\Translations\Administrator\Model;
 use Joomla\CMS\Application\CMSApplicationInterface;
 use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\Factory;
+
 use Joomla\CMS\Form\Form;
-use Joomla\CMS\Language\Associations;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
+use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\FormModel;
-use Joomla\Component\Content\Administrator\Model\ArticleModel;
+use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
 /**
  * Side-by-side translation feedback model.
  *
- * Loads one source-language article and its translation in a single target
- * language for display. The queue tables store no pointer to the draft article,
- * so the translation is resolved from the source article through Joomla
- * associations (the same lookup the core components use.)
+ * Loads one source item and its translation in a single target language for
+ * display, for any content type listed in the content type map. The queue tables
+ * store no pointer to the draft, so the translation is resolved from the source
+ * through Joomla associations.
  *
  * @since  0.2.0
  */
@@ -48,23 +49,7 @@ class TranslatorfeedbackModel extends FormModel
     private $item;
 
     /**
-     * The article's plain translatable columns in #__content.
-     *
-     * @var    string[]
-     * @since  0.4.0
-     */
-    private const ARTICLE_FIELDS = ['title', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note'];
-
-    /**
-     * The article's translatable sub-fields inside the #__content images JSON column.
-     *
-     * @var    string[]
-     * @since  0.4.0
-     */
-    private const ARTICLE_IMAGE_FIELDS = ['image_intro_alt', 'image_intro_caption', 'image_fulltext_alt', 'image_fulltext_caption'];
-
-    /**
-     * Read the request state: which source article and which target language.
+     * Read the request state: which source item, which content type, which target language.
      *
      * @return  void
      *
@@ -75,11 +60,15 @@ class TranslatorfeedbackModel extends FormModel
         $input = Factory::getApplication()->getInput(); // No DI: models are not application aware.
 
         $this->setState('content_id', $input->getInt('id'));
+        $this->setState('content_type', $input->getCmd('contentType', 'com_content.article'));
         $this->setState('target_language', $input->getCmd('target'));
     }
 
     /**
-     * Load the translation feedback form.
+     * Load the translation feedback form for the current content type.
+     *
+     * Each content type has its own form (translatorfeedback_<type>.xml) listing
+     * the fields that type can translate, so the form name carries the type key.
      *
      * @param   array    $data      Data for the form.
      * @param   boolean  $loadData  True to load the form's own data.
@@ -90,12 +79,14 @@ class TranslatorfeedbackModel extends FormModel
      */
     public function getForm($data = [], $loadData = true)
     {
-        // Build the form from forms/translatorfeedback.xml; 'jform' namespaces the fields, load_data triggers loadFormData() below.
-        return $this->loadForm('com_translations.translatorfeedback', 'translatorfeedback', ['control' => 'jform', 'load_data' => $loadData]);
+        $source = 'translatorfeedback_' . $this->contentTypeKey();
+
+        // 'jform' namespaces the fields, load_data triggers loadFormData() below.
+        return $this->loadForm('com_translations.' . $source, $source, ['control' => 'jform', 'load_data' => $loadData]);
     }
 
     /**
-     * Bind the translation article into the form fields.
+     * Bind the translation item into the form fields.
      *
      * @return  array  The form data (empty when there is no translation yet).
      *
@@ -105,11 +96,11 @@ class TranslatorfeedbackModel extends FormModel
     {
         $item = $this->getItem();
 
-        if (empty($item->translation_article)) {
+        if ($item->translation_item === null) {
             return [];
         }
 
-        $values = $this->flattenArticleFields($item->translation_article);
+        $values = $this->flattenFields($item->translation_item, $item->translatable_fields);
         $data   = [];
 
         foreach ($values as $field => $value) {
@@ -120,14 +111,14 @@ class TranslatorfeedbackModel extends FormModel
     }
 
     /**
-     * Save the edited translation into its draft #__content article.
+     * Save the edited translation into its draft item.
      *
-     * The write is delegated to com_content's ArticleModel so the normal workflow
-     * and versioning run; only the translated fields are overwritten on the existing
-     * article. The translation article is resolved (via associations) by getItem().
+     * The write is delegated to the type's managing component so the normal workflow
+     * and versioning run; only the translatable fields are overwritten on the existing
+     * draft. The translation is resolved (via associations) by getItem().
      *
      * @param   array                    $data         Submitted form values, keyed translation_<field>.
-     * @param   CMSApplicationInterface  $application  The application, used to boot com_content.
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
      *
      * @return  boolean  True on success.
      *
@@ -137,73 +128,57 @@ class TranslatorfeedbackModel extends FormModel
     {
         $item = $this->getItem();
 
-        if (empty($item->translation_article)) {
+        if ($item->translation_item === null) {
             throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
         }
 
-        $translationId = (int) $item->translation_article->id;
+        $properties         = ContentTypesHelper::getProperties($item->content_type);
+        $translatableFields = (array) ($properties['translatableFields'] ?? []);
+        $translationId      = (int) $item->translation_item['id'];
 
-        // Reuse com_content's Article admin model - its save() runs the workflow + versioning for us.
+        // Reuse the type's admin model - its save() runs the workflow + versioning for us.
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
-        $component = $application->bootComponent('com_content');
+        $component = $application->bootComponent((string) ($properties['component'] ?? ''));
 
         // 'ignore_request' => true: we hand this model our own data, so it must not read state from the current request.
-        /** @var ArticleModel $articleModel */
-        $articleModel = $component->getMVCFactory()->createModel('Article', 'Administrator', ['ignore_request' => true]);
+        /** @var AdminModel $model */
+        $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
 
-        // Load the raw article row - plain column values, avoiding the computed objects getItem() adds (e.g. tags).
-        $db    = $this->getDatabase();
-        $query = $db->getQuery(true)
-            ->select('*')
-            ->from($db->quoteName('#__content'))
-            ->where($db->quoteName('id') . ' = :id')
-            ->bind(':id', $translationId, ParameterType::INTEGER);
-        $db->setQuery($query);
+        // Reload the raw row - plain column values, avoiding the computed objects getItem() adds (e.g. tags).
+        $row = $this->loadItem($translationId, (string) ($properties['table'] ?? ''));
 
-        $article = $db->loadAssoc();
-
-        if ($article === null) {
+        if ($row === null) {
             throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
         }
 
         // Snapshot the translation as it stands now, before the overwrite below replaces it.
-        // This is the machine draft (what was produced before this correction); once #__content
+        // This is the machine draft (what was produced before this correction); once the row
         // is overwritten these values exist nowhere else, so they must be captured for the feedback pair.
-        $machineDraft = $this->flattenArticleFields($article);
+        $machineDraft = $this->flattenFields($row, $translatableFields);
 
-        // Overwrite each translated column; for anything not submitted, keep the article's current value.
-        foreach (self::ARTICLE_FIELDS as $field) {
-            $article[$field] = $data['translation_' . $field] ?? ($article[$field] ?? '');
-        }
+        // Overwrite each translated field; anything not submitted keeps the row's current value.
+        $row = $this->applyTranslation($row, $translatableFields, $data);
 
-        // The alt and caption fields live in the images JSON column; set those keys in place so the
-        // image paths and any other keys survive.
-        $images = new Registry($article['images'] ?? '');
-
-        foreach (self::ARTICLE_IMAGE_FIELDS as $field) {
-            $images->set($field, $data['translation_' . $field] ?? $images->get($field, ''));
-        }
-
-        $article['images'] = $images->toString();
-
-        // The values now on the article are the human correction - the counterpart to the
+        // The values now on the row are the human correction - the counterpart to the
         // machine draft captured above. Paired field by field, these become the feedback rows.
-        $humanCorrection = $this->flattenArticleFields($article);
+        $humanCorrection = $this->flattenFields($row, $translatableFields);
 
         // com_content's edit form works on a single combined body; keep it consistent with the two columns.
-        $introtext = (string) $article['introtext'];
-        $fulltext  = (string) $article['fulltext'];
+        if (\array_key_exists('introtext', $row) || \array_key_exists('fulltext', $row)) {
+            $introtext = (string) ($row['introtext'] ?? '');
+            $fulltext  = (string) ($row['fulltext'] ?? '');
 
-        $article['articletext'] = trim($fulltext) !== ''
-            ? $introtext . '<hr id="system-readmore">' . $fulltext
-            : $introtext;
+            $row['articletext'] = trim($fulltext) !== ''
+                ? $introtext . '<hr id="system-readmore">' . $fulltext
+                : $introtext;
+        }
 
-        $saved = (bool) $articleModel->save($article);
+        $saved = (bool) $model->save($row);
 
         // Record the correction as feedback - but only once the save actually persisted,
         // and only when there is a queue row to anchor it to.
         if ($saved) {
-            $queueId = $this->getQueueId((int) $item->content_id);
+            $queueId = $this->getQueueId((int) $item->content_id, $item->content_type);
 
             if ($queueId !== null) {
                 $this->recordFeedback($queueId, $machineDraft, $humanCorrection);
@@ -224,21 +199,19 @@ class TranslatorfeedbackModel extends FormModel
     /**
      * Find the queue row a piece of feedback belongs to.
      *
-     * Feedback is anchored to the queue row for the source article (one row per
-     * source article, keyed by content type + id). Returns null when there is no
+     * Feedback is anchored to the queue row for the source item (one row per
+     * source item, keyed by content type + id). Returns null when there is no
      * queue row, since feedback cannot be anchored without one.
      *
-     * @param   integer  $contentId  The source article id.
+     * @param   integer  $contentId    The source item id.
+     * @param   string   $contentType  The content type alias, e.g. 'com_content.article'.
      *
      * @return  integer|null  The queue row id, or null when none exists.
      *
      * @since   0.2.0
      */
-    private function getQueueId(int $contentId): ?int
+    private function getQueueId(int $contentId, string $contentType): ?int
     {
-        // Must match the content type the queue stores (see QueueModel::CONTENT_TYPE).
-        $contentType = 'com_content.article';
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('id'))
@@ -274,8 +247,7 @@ class TranslatorfeedbackModel extends FormModel
     private function recordFeedback(int $queueId, array $machineDraft, array $humanCorrection): void
     {
         $item           = $this->getItem();
-        $source         = $item->source_article;
-        $sourceValues   = $source !== null ? $this->flattenArticleFields($source) : [];
+        $sourceValues   = $item->source_values;
         $targetLanguage = (string) $item->target_language;
         $translatorId   = (int) $this->getCurrentUser()->id;
         $db             = $this->getDatabase();
@@ -300,45 +272,97 @@ class TranslatorfeedbackModel extends FormModel
     }
 
     /**
-     * Flatten an article's translatable fields into one value map keyed by field.
+     * Flatten an item's translatable fields into one value map keyed by field.
      *
-     * The plain columns are read directly; the alt and caption fields are read from the
-     * images JSON column. Accepts the raw row (array) or a loaded article (object), so the
-     * same field set drives the form, the save and the feedback pairs.
+     * Plain columns are read directly; a JSON column's sub-fields are read from inside it
+     * and keyed by their sub-field name (the same keys the form uses). Unlike the producer's
+     * collection, empty values are kept, so the editor shows every field the source has.
+     * The field list comes from the content type map: a plain name is a column, an array
+     * maps a JSON column to its translatable sub-keys.
      *
-     * @param   array|object  $article  The article row or object.
+     * @param   array  $row                 The item's column values.
+     * @param   array  $translatableFields  The content type's translatable field list.
      *
      * @return  array  The field values keyed by field name.
      *
      * @since   0.4.0
      */
-    private function flattenArticleFields($article): array
+    private function flattenFields(array $row, array $translatableFields): array
     {
-        $read = static function (string $key) use ($article): string {
-            $value = \is_array($article) ? ($article[$key] ?? '') : ($article->$key ?? '');
-
-            return (string) $value;
-        };
-
         $values = [];
 
-        foreach (self::ARTICLE_FIELDS as $field) {
-            $values[$field] = $read($field);
-        }
+        foreach ($translatableFields as $field) {
+            if (\is_string($field)) {
+                $values[$field] = (string) ($row[$field] ?? '');
 
-        $images = new Registry($read('images'));
+                continue;
+            }
 
-        foreach (self::ARTICLE_IMAGE_FIELDS as $field) {
-            $values[$field] = (string) $images->get($field, '');
+            if (!\is_array($field)) {
+                continue;
+            }
+
+            foreach ($field as $jsonColumn => $subKeys) {
+                $registry = new Registry($row[$jsonColumn] ?? '');
+
+                foreach ((array) $subKeys as $subKey) {
+                    $subKey          = (string) $subKey;
+                    $values[$subKey] = (string) $registry->get($subKey, '');
+                }
+            }
         }
 
         return $values;
     }
 
     /**
-     * Get the source article and its target-language translation.
+     * Overwrite an item's translatable fields with the submitted translation.
      *
-     * @return  object  { content_id, target_language, source_article, translation_article } - the articles may be null.
+     * Mirrors flattenFields: a plain field takes its submitted value (falling back to the
+     * row's current value), a JSON column's sub-fields are set in place so the other keys
+     * (such as an image path) survive. Fields not present in the submission are left untouched.
+     *
+     * @param   array  $row                 The item's column values.
+     * @param   array  $translatableFields  The content type's translatable field list.
+     * @param   array  $data                Submitted form values, keyed translation_<field>.
+     *
+     * @return  array  The row with the translated fields applied.
+     *
+     * @since   0.4.0
+     */
+    private function applyTranslation(array $row, array $translatableFields, array $data): array
+    {
+        foreach ($translatableFields as $field) {
+            if (\is_string($field)) {
+                $row[$field] = $data['translation_' . $field] ?? ($row[$field] ?? '');
+
+                continue;
+            }
+
+            if (!\is_array($field)) {
+                continue;
+            }
+
+            foreach ($field as $jsonColumn => $subKeys) {
+                $registry = new Registry($row[$jsonColumn] ?? '');
+
+                foreach ((array) $subKeys as $subKey) {
+                    $subKey = (string) $subKey;
+                    $registry->set($subKey, $data['translation_' . $subKey] ?? $registry->get($subKey, ''));
+                }
+
+                $row[$jsonColumn] = $registry->toString();
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Get the source item and its target-language translation.
+     *
+     * @return  object  { content_id, content_type, target_language, source_language,
+     *                    source_item, translation_item, source_values, translatable_fields } - the items may be null.
      *
      * @since   0.2.0
      */
@@ -349,56 +373,124 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         $contentId      = (int) $this->getState('content_id');
+        $contentType    = (string) $this->getState('content_type');
         $targetLanguage = (string) $this->getState('target_language');
 
-        $sourceArticle      = $this->loadArticle($contentId);
-        $translationArticle = null;
+        $properties         = ContentTypesHelper::getProperties($contentType);
+        $table              = (string) ($properties['table'] ?? '');
+        $context            = (string) ($properties['context_associations'] ?? '');
+        $translatableFields = (array) ($properties['translatableFields'] ?? []);
+
+        $sourceItem      = $this->loadItem($contentId, $table);
+        $translationItem = null;
 
         // The queue tables hold no draft pointer, so resolve the translation from the
-        // source article through #__associations (Associations::getAssociations returns
-        // one entry per language, keyed by language code, each carrying ->id).
-        if ($sourceArticle !== null && $targetLanguage !== '' && Associations::isEnabled()) {
-            $associations = Associations::getAssociations('com_content', '#__content', 'com_content.item', $contentId);
+        // source item through its association group (keyed by language).
+        if ($sourceItem !== null && $targetLanguage !== '' && $context !== '') {
+            $group = $this->getAssociationGroup($contentId, $context, $table);
 
-            if (isset($associations[$targetLanguage])) {
-                $translationArticle = $this->loadArticle((int) $associations[$targetLanguage]->id);
+            if (isset($group[$targetLanguage])) {
+                $translationItem = $this->loadItem((int) $group[$targetLanguage], $table);
             }
         }
 
         $this->item = (object) [
             'content_id'          => $contentId,
+            'content_type'        => $contentType,
             'target_language'     => $targetLanguage,
-            'source_article'      => $sourceArticle,
-            'translation_article' => $translationArticle,
+            'source_language'     => $sourceItem !== null ? (string) ($sourceItem['language'] ?? '') : '',
+            'source_item'         => $sourceItem,
+            'translation_item'    => $translationItem,
+            'source_values'       => $sourceItem !== null ? $this->flattenFields($sourceItem, $translatableFields) : [],
+            'translatable_fields' => $translatableFields,
         ];
 
         return $this->item;
     }
 
     /**
-     * Load a single article's display fields from #__content.
+     * Load a single item's raw column values from its table.
      *
-     * @param   integer  $id  Article id.
+     * @param   integer  $id     The item id.
+     * @param   string   $table  The content type's database table.
      *
-     * @return  object|null  The article row, or null when not found.
+     * @return  array|null  The item row, or null when not found.
      *
      * @since   0.2.0
      */
-    private function loadArticle(int $id)
+    private function loadItem(int $id, string $table): ?array
     {
-        if ($id <= 0) {
+        if ($id <= 0 || $table === '') {
             return null;
         }
 
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
-            ->select($db->quoteName(['id', 'title', 'introtext', 'fulltext', 'metadesc', 'metakey', 'note', 'images', 'language']))
-            ->from($db->quoteName('#__content'))
+            ->select('*')
+            ->from($db->quoteName($table))
             ->where($db->quoteName('id') . ' = :id')
             ->bind(':id', $id, ParameterType::INTEGER);
-
         $db->setQuery($query);
 
-        return $db->loadObject() ?: null;
+        return $db->loadAssoc() ?: null;
+    }
+
+    /**
+     * Load the item ids of the source item's association group, keyed by language.
+     *
+     * Joomla keeps all language versions of an item in one association group under a
+     * shared key. Returns an empty array when the item has no associations yet.
+     *
+     * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $context       The associations context, e.g. 'com_content.item'.
+     * @param   string   $table         The content type's database table.
+     *
+     * @return  array  Item ids keyed by language code.
+     *
+     * @since   0.4.0
+     */
+    private function getAssociationGroup(int $sourceItemId, string $context, string $table): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['item.language', 'item.id']))
+            ->from($db->quoteName('#__associations', 'sourceAssociation'))
+            ->join(
+                'INNER',
+                $db->quoteName('#__associations', 'groupAssociation'),
+                $db->quoteName('groupAssociation.key') . ' = ' . $db->quoteName('sourceAssociation.key')
+            )
+            ->join(
+                'INNER',
+                $db->quoteName($table, 'item'),
+                $db->quoteName('item.id') . ' = ' . $db->quoteName('groupAssociation.id')
+            )
+            ->where($db->quoteName('sourceAssociation.context') . ' = :context')
+            ->where($db->quoteName('groupAssociation.context') . ' = :groupContext')
+            ->where($db->quoteName('sourceAssociation.id') . ' = :sourceId')
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':groupContext', $context, ParameterType::STRING)
+            ->bind(':sourceId', $sourceItemId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return $db->loadAssocList('language', 'id');
+    }
+
+    /**
+     * The content type's short key, used to name its feedback form.
+     *
+     * The map keys items by their full alias (com_content.article); the form file is
+     * named by the item part (translatorfeedback_article).
+     *
+     * @return  string  The key after the last dot, e.g. 'article'.
+     *
+     * @since   0.4.0
+     */
+    private function contentTypeKey(): string
+    {
+        $contentType = (string) $this->getState('content_type');
+        $dot         = strrpos($contentType, '.');
+
+        return $dot === false ? $contentType : substr($contentType, $dot + 1);
     }
 }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fieldset name="content" label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SECTION_CONTENT">
+		<field
+			name="translation_title"
+			type="text"
+			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_TITLE"
+		/>
+	</fieldset>
+</form>
