@@ -50,9 +50,10 @@ for translation" are hidden by default; a filter lets you show them and clear th
 
 Opening a cell that is in review takes you to the side-by-side editor. The source content
 item is shown read-only on the left; the editable translation is on the right, field by
-field (title, intro and full text, meta description and keywords, note, and the image alt
-text and captions). You correct the translation and use **Save & Train**: the draft is
-saved and every field you changed is recorded as feedback.
+field. Each content type shows the fields it can translate (for an article: title, intro
+and full text, meta description and keywords, note, and the image alt text and captions).
+You correct the translation and use **Save & Train**: the draft is saved and every field
+you changed is recorded as feedback.
 
 ### Marking an item as "no need for translation"
 

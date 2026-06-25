@@ -76,6 +76,13 @@ that declare an `associationsContext` (articles, categories) do, so this is left
 Tags do not, so their entry sets `"associationsByModel": false` and the component
 writes the association row directly instead.
 
+**`modelState`** (object, optional) - state values to set on the managing model before
+the draft is saved, as `state-key: value`. Some core models read request-scoped state in
+their `populateState`, which the component skips because it hands the model its data
+directly. A category model reads its extension from the `category.extension` state to
+confirm the item can be associated, so the category entry sets
+`{ "category.extension": "com_content" }`; without it the association would not be written.
+
 **`limitToExtension`** (string, optional) - restrict translation to items whose
 `extension` column matches this value. Some tables hold several extensions' items;
 categories, for example, are shared by many components, so the category entry sets
