@@ -33,7 +33,8 @@
             "limitToExtension": "com_content",
             "context_associations": "com_categories.item",
             "draftCopyFields": ["parent_id", "extension", "access", "created_user_id"],
-            "stateField": "published"
+            "stateField": "published",
+            "modelState": { "category.extension": "com_content" }
         },
         "com_tags.tag": {
             "translatableFields": [
