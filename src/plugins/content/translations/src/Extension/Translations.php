@@ -100,6 +100,15 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private array $capturedTranslations = [];
 
     /**
+     * Per-language queue cells captured during onContentBeforeDelete when the deleted article is one of
+     * our translations, so onContentAfterDelete can clear the stale state row once the article is gone.
+     *
+     * @var    array<int, array{queueId: int, language: string}>
+     * @since  0.4.0
+     */
+    private array $capturedCells = [];
+
+    /**
      * Returns the events this subscriber listens to.
      *
      * @return  array
@@ -249,7 +258,8 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Capture a managed source's translation group before its delete removes the link.
+     * Before a delete removes the association link, capture what onContentAfterDelete needs: a
+     * managed source's translation group, or a translation draft's stale queue cell.
      *
      * @param   BeforeDeleteEvent  $event  The event.
      *
@@ -263,19 +273,30 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return;
         }
 
-        $sourceId = (int) $event->getItem()->id;
+        $item   = $event->getItem();
+        $itemId = (int) $item->id;
 
-        // Core removes the association link during the delete that follows, so the group
-        // is read now; an empty array still marks a managed source whose queue row to clean.
-        if ($this->queueId($sourceId) === null) {
+        // Core removes the association link during the delete that follows, so anything that needs it is
+        // read now. A managed source captures its translation group (an empty array still marks the source
+        // whose queue row to clean); otherwise the item may be one of our translation drafts.
+        if ($this->queueId($itemId) !== null) {
+            $this->capturedTranslations[$itemId] = $this->translationGroupIds($itemId);
+
             return;
         }
 
-        $this->capturedTranslations[$sourceId] = $this->translationGroupIds($sourceId);
+        $queueId = $this->sourceQueueIdForTranslation($itemId);
+
+        if ($queueId !== null) {
+            $this->capturedCells[$itemId] = [
+                'queueId'  => $queueId,
+                'language' => (string) ($item->language ?? ''),
+            ];
+        }
     }
 
     /**
-     * Delete a deleted source's translations and clean up its queue rows.
+     * Clean up after a delete: a source's translations and queue rows, or a translation draft's stale cell.
      *
      * @param   AfterDeleteEvent  $event  The event.
      *
@@ -289,21 +310,30 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return;
         }
 
-        $sourceId = (int) $event->getItem()->id;
+        $itemId = (int) $event->getItem()->id;
 
-        if (!isset($this->capturedTranslations[$sourceId])) {
+        // A managed source: delete its translations and clean its queue rows.
+        if (isset($this->capturedTranslations[$itemId])) {
+            $translations = $this->capturedTranslations[$itemId];
+            unset($this->capturedTranslations[$itemId]);
+
+            // The translations were trashed with the source, so they can now be deleted.
+            if ($translations !== []) {
+                $this->deleteTranslations($translations);
+            }
+
+            $this->removeFromQueue($itemId);
+
             return;
         }
 
-        $translations = $this->capturedTranslations[$sourceId];
-        unset($this->capturedTranslations[$sourceId]);
+        // One of our translation drafts: clear its now-stale per-language queue cell.
+        if (isset($this->capturedCells[$itemId])) {
+            $cell = $this->capturedCells[$itemId];
+            unset($this->capturedCells[$itemId]);
 
-        // The translations were trashed with the source, so they can now be deleted.
-        if ($translations !== []) {
-            $this->deleteTranslations($translations);
+            $this->clearQueueCell($cell['queueId'], $cell['language']);
         }
-
-        $this->removeFromQueue($sourceId);
     }
 
     /**
@@ -452,6 +482,77 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         }
 
         return $ids;
+    }
+
+    /**
+     * The queue id of a translation draft's source, found through its association group.
+     *
+     * A translation has no queue row of its own; its source does. The draft and its source share an
+     * #__associations key, and the group member that has a #__translations_queue row is the source.
+     * Returns null when the article is not one of our translations (a plain multilingual item).
+     *
+     * @param   integer  $translationId  The translation draft's article id.
+     *
+     * @return  integer|null
+     *
+     * @since   0.4.0
+     */
+    private function sourceQueueIdForTranslation(int $translationId): ?int
+    {
+        // Bound parameters are passed by reference, so the constants need variables.
+        $context     = self::ASSOCIATIONS_CONTEXT;
+        $contentType = self::CONTENT_TYPE;
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('queue.id'))
+            ->from($db->quoteName('#__associations', 'translationAssociation'))
+            ->join(
+                'INNER',
+                $db->quoteName('#__associations', 'sourceAssociation'),
+                $db->quoteName('sourceAssociation.key') . ' = ' . $db->quoteName('translationAssociation.key')
+            )
+            ->join(
+                'INNER',
+                $db->quoteName('#__translations_queue', 'queue'),
+                $db->quoteName('queue.content_id') . ' = ' . $db->quoteName('sourceAssociation.id')
+                . ' AND ' . $db->quoteName('queue.content_type') . ' = :contentType'
+            )
+            ->where($db->quoteName('translationAssociation.id') . ' = :translationId')
+            ->where($db->quoteName('translationAssociation.context') . ' = :context')
+            ->where($db->quoteName('sourceAssociation.context') . ' = :groupContext')
+            ->bind(':translationId', $translationId, ParameterType::INTEGER)
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':groupContext', $context, ParameterType::STRING)
+            ->bind(':contentType', $contentType, ParameterType::STRING);
+        $db->setQuery($query);
+
+        $queueId = $db->loadResult();
+
+        return $queueId === null ? null : (int) $queueId;
+    }
+
+    /**
+     * Remove a single per-language state row so its queue cell reverts to "no translation yet".
+     *
+     * @param   integer  $queueId   The source's queue row id.
+     * @param   string   $language  The translation's language code.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    private function clearQueueCell(int $queueId, string $language): void
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->delete($db->quoteName('#__translations_queue_states'))
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('target_language') . ' = :language')
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':language', $language, ParameterType::STRING);
+        $db->setQuery($query);
+        $db->execute();
     }
 
     /**
