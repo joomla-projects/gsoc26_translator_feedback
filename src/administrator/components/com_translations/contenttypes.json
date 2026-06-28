@@ -18,7 +18,7 @@
             "draftCopyFields": ["catid", "access", "created_by"],
             "stateField": "state",
             "associatedFields": { "catid": "com_categories.category" },
-            "m2m_relation": "tag"
+            "m2m_relation": { "tags": "com_tags.tag" }
         },
         "com_categories.category": {
             "translatableFields": [
