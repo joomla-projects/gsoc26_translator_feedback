@@ -509,6 +509,11 @@ class TranslationModel extends BaseDatabaseModel
             $associations = $this->getAssociationGroup((int) $sourceItem['id'], $context, (string) ($properties['table'] ?? ''));
             $associations[$sourceItem['language']] = (int) $sourceItem['id'];
 
+            // Update the language's existing translation in place rather than inserting a duplicate.
+            if (isset($associations[$targetLanguage])) {
+                $draft['id'] = (int) $associations[$targetLanguage];
+            }
+
             // A model with an associationsContext writes the link itself on save.
             if ($modelWritesAssociations) {
                 $draft['associations'] = $associations;
