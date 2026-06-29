@@ -125,14 +125,17 @@ final class Claude extends CMSPlugin implements SubscriberInterface
             throw new \RuntimeException('No Claude API key is configured for the translation plugin.');
         }
 
-        $event->addResult(
-            $this->requestTranslation(
-                $event->getSourceStrings(),
-                $event->getSourceLanguage(),
-                $event->getTargetLanguage(),
-                $apiKey
-            )
+        $translated = $this->requestTranslation(
+            $event->getSourceStrings(),
+            $event->getSourceLanguage(),
+            $event->getTargetLanguage(),
+            $apiKey
         );
+
+        $event->addResult($translated);
+
+        // One provider answers per item; stop the rest of the group running.
+        $event->stopPropagation();
     }
 
     /**
