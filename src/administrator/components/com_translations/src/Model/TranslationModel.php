@@ -93,7 +93,7 @@ class TranslationModel extends BaseDatabaseModel
             throw new \RuntimeException(\sprintf('Item %d is marked as not to be translated.', $sourceItemId));
         }
 
-        $this->createDraft($sourceItem, $targetLanguage, $application, $properties);
+        $this->createDraft($sourceItem, $targetLanguage, $contentType, $application, $properties);
         $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType);
     }
 
@@ -442,6 +442,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   array                    $sourceItem      The source item's column values.
      * @param   string                   $targetLanguage  The target language code.
+     * @param   string                   $contentType     The content type alias, e.g. 'com_content.article'.
      * @param   CMSApplicationInterface  $application     The application, used to boot the component.
      * @param   array                    $properties      The content type's properties from the map.
      *
@@ -451,7 +452,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @since   0.3.0
      */
-    private function createDraft(array $sourceItem, string $targetLanguage, CMSApplicationInterface $application, array $properties): void
+    private function createDraft(array $sourceItem, string $targetLanguage, string $contentType, CMSApplicationInterface $application, array $properties): void
     {
         // Save through the managing component's model so versioning and the content events run.
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
@@ -530,6 +531,35 @@ class TranslationModel extends BaseDatabaseModel
             $draft[$field] = $sourceItem[$field] ?? null;
         }
 
+        // Repoint single foreign keys (such as catid) at the related item's translation, keeping the source's when none exists yet.
+        foreach ((array) ($properties['associatedFields'] ?? []) as $field => $relatedType) {
+            $relatedItemId = (int) ($sourceItem[$field] ?? 0);
+
+            if ($relatedItemId === 0) {
+                continue;
+            }
+
+            $translatedId = $this->translatedRelatedId($relatedItemId, (string) $relatedType, $targetLanguage);
+
+            if ($translatedId !== null) {
+                $draft[$field] = $translatedId;
+            }
+        }
+
+        // Repoint many-to-many relations (tags) at the related items' translations, keeping the source's where none exists yet.
+        // Tags are keyed in the map by a type alias that can differ from our key (a category's tags use com_content.category).
+        $tagTypeAlias = (string) ($properties['context_tags'] ?? $contentType);
+
+        foreach ((array) ($properties['m2m_relation'] ?? []) as $dataKey => $relatedType) {
+            $translatedIds = [];
+
+            foreach ($this->getSourceTagIds($tagTypeAlias, (int) $sourceItem['id']) as $relatedItemId) {
+                $translatedIds[] = $this->translatedRelatedId($relatedItemId, (string) $relatedType, $targetLanguage) ?? $relatedItemId;
+            }
+
+            $draft[$dataKey] = $translatedIds;
+        }
+
         // Keep the draft unpublished until a translator approves it.
         $draft[(string) ($properties['stateField'] ?? '')] = 0;
 
@@ -583,6 +613,60 @@ class TranslationModel extends BaseDatabaseModel
                 $application
             );
         }
+    }
+
+    /**
+     * Find a related item's translation in the target language.
+     *
+     * Looks up the related item's association group, the same key mechanism the item itself uses,
+     * and returns its target language member, or null when the related item has no translation yet.
+     *
+     * @param   integer  $relatedItemId   The source related item id, e.g. a category id.
+     * @param   string   $relatedType     The related content type alias, e.g. 'com_categories.category'.
+     * @param   string   $targetLanguage  The target language code.
+     *
+     * @return  integer|null  The translated related item id, or null when it has none.
+     *
+     * @since   0.4.0
+     */
+    private function translatedRelatedId(int $relatedItemId, string $relatedType, string $targetLanguage): ?int
+    {
+        $properties = ContentTypesHelper::getProperties($relatedType);
+        $group      = $this->getAssociationGroup(
+            $relatedItemId,
+            (string) ($properties['context_associations'] ?? ''),
+            (string) ($properties['table'] ?? '')
+        );
+
+        return isset($group[$targetLanguage]) ? (int) $group[$targetLanguage] : null;
+    }
+
+    /**
+     * Load the tag ids attached to a source item.
+     *
+     * Tags live in the content item tag map rather than on the item's own table, so they are
+     * read separately, keyed by the type alias the tags are stored under and the item id.
+     *
+     * @param   string   $tagTypeAlias  The type alias the item's tags are stored under, e.g. 'com_content.article'.
+     * @param   integer  $sourceItemId  The source item id.
+     *
+     * @return  integer[]  The attached tag ids.
+     *
+     * @since   0.4.0
+     */
+    private function getSourceTagIds(string $tagTypeAlias, int $sourceItemId): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('tag_id'))
+            ->from($db->quoteName('#__contentitem_tag_map'))
+            ->where($db->quoteName('type_alias') . ' = :tagTypeAlias')
+            ->where($db->quoteName('content_item_id') . ' = :contentId')
+            ->bind(':tagTypeAlias', $tagTypeAlias, ParameterType::STRING)
+            ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return array_map('intval', $db->loadColumn());
     }
 
     /**
