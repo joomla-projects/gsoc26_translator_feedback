@@ -46,6 +46,13 @@ as a preference pair in `#__translations_feedback`: the `source_text`, the
 `machine_draft`, and the translator's `human_correction`. Feedback is what the
 system learns from.
 
+**Guard** - a defensive check in the code that protects an invariant by stopping
+or redirecting an operation that would otherwise be invalid. The producer, for
+example, guards against translating an item marked "no need for translation",
+against an item outside a content type's extension, and against creating a
+duplicate when the target language already has a translation (updating the
+existing one instead).
+
 **No need for translation** - a flag on a source content item (`do_not_translate`)
 marking it as one that should not be translated at all. Such items are hidden from
 the queue by default.
