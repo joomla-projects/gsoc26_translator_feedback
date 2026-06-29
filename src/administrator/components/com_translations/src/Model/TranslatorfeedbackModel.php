@@ -15,6 +15,7 @@ namespace Joomla\Component\Translations\Administrator\Model;
 // phpcs:enable PSR1.Files.SideEffects
 
 use Joomla\CMS\Application\CMSApplicationInterface;
+use Joomla\CMS\Event\CustomFields\PrepareDomEvent;
 use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\Factory;
 
@@ -24,8 +25,10 @@ use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\FormModel;
+use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
+use Joomla\Event\DispatcherInterface;
 use Joomla\Registry\Registry;
 
 /**
@@ -40,6 +43,22 @@ use Joomla\Registry\Registry;
  */
 class TranslatorfeedbackModel extends FormModel
 {
+    /**
+     * Custom-field types whose values are translatable.
+     *
+     * @var    string[]
+     * @since  0.4.0
+     */
+    private const TRANSLATABLE_FIELD_TYPES = ['text', 'textarea', 'editor', 'note'];
+
+    /**
+     * Prefix that namespaces a custom field in the feedback maps, so it never collides with a column field.
+     *
+     * @var    string
+     * @since  0.4.0
+     */
+    private const CUSTOM_FIELD_PREFIX = 'com_fields:';
+
     /**
      * Cached source + translation pair (see getItem()).
      *
@@ -82,7 +101,87 @@ class TranslatorfeedbackModel extends FormModel
         $source = 'translatorfeedback_' . $this->contentTypeKey();
 
         // 'jform' namespaces the fields, load_data triggers loadFormData() below.
-        return $this->loadForm('com_translations.' . $source, $source, ['control' => 'jform', 'load_data' => $loadData]);
+        $form = $this->loadForm('com_translations.' . $source, $source, ['control' => 'jform', 'load_data' => $loadData]);
+
+        // Custom fields vary per item, so inject the draft's translatable ones into the form at prepare time.
+        $item = $this->getItem();
+
+        if ($item->translation_item !== null) {
+            $this->injectCustomFields($form, $item->translation_item, ContentTypesHelper::getProperties($item->content_type));
+        }
+
+        return $form;
+    }
+
+    /**
+     * Inject the draft's translatable custom fields into the feedback form.
+     *
+     * Custom fields are not declared in the static form because they vary per item, so they are
+     * built at prepare time the way core's Fields tab does (FieldsHelper::prepareForm): each field
+     * type plugin turns its field into a <field> node through onCustomFieldsPrepareDom, the nodes
+     * are merged into the form, and each is set to the draft's stored value. Only the translatable
+     * types are added, so a translator edits just the fields they can correct.
+     *
+     * @param   Form   $form        The feedback form.
+     * @param   array  $draftItem   The translation draft's column values.
+     * @param   array  $properties  The content type's properties from the map.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    private function injectCustomFields(Form $form, array $draftItem, array $properties): void
+    {
+        $context = (string) ($properties['context_custom_fields'] ?? '');
+
+        if ($context === '') {
+            return;
+        }
+
+        // Keep only the fields a translator can correct.
+        $fields = [];
+
+        foreach (FieldsHelper::getFields($context, $draftItem) as $field) {
+            if (\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
+                $fields[] = $field;
+            }
+        }
+
+        if ($fields === []) {
+            return;
+        }
+
+        // Build the custom field form the way FieldsHelper::prepareForm() does.
+        $xml        = new \DOMDocument('1.0', 'UTF-8');
+        $fieldsNode = $xml->appendChild(new \DOMElement('form'))->appendChild(new \DOMElement('fields'));
+        $fieldsNode->setAttribute('name', 'com_fields');
+
+        // The field type plugins are registered on the global dispatcher (the getFields read above imports them
+        // there), so the nodes are built by dispatching on it; the model's own dispatcher would not reach them.
+        /** @var DispatcherInterface $dispatcher */
+        $dispatcher = Factory::getContainer()->get(DispatcherInterface::class);
+
+        foreach ($fields as $field) {
+            $dispatcher->dispatch('onCustomFieldsPrepareDom', new PrepareDomEvent('onCustomFieldsPrepareDom', [
+                'subject'  => $field,
+                'fieldset' => $fieldsNode,
+                'form'     => $form,
+            ]));
+        }
+
+        $form->load((string) $xml->saveXML());
+
+        // Set each field to the draft's value and size it to match its read-only source pane.
+        foreach ($fields as $field) {
+            if ($field->rawvalue !== null) {
+                $form->setValue($field->name, 'com_fields', $field->rawvalue);
+            }
+
+            // A custom textarea carries its own row count; match it to the declared textareas (the editor keeps its natural height).
+            if ($field->type === 'textarea') {
+                $form->setFieldAttribute($field->name, 'rows', '3', 'com_fields');
+            }
+        }
     }
 
     /**
@@ -117,7 +216,7 @@ class TranslatorfeedbackModel extends FormModel
      * and versioning run; only the translatable fields are overwritten on the existing
      * draft. The translation is resolved (via associations) by getItem().
      *
-     * @param   array                    $data         Submitted form values, keyed translation_<field>.
+     * @param   array                    $data         Submitted form values, keyed translation_<field> plus a com_fields array.
      * @param   CMSApplicationInterface  $application  The application, used to boot the component.
      *
      * @return  boolean  True on success.
@@ -154,7 +253,8 @@ class TranslatorfeedbackModel extends FormModel
         // Snapshot the translation as it stands now, before the overwrite below replaces it.
         // This is the machine draft (what was produced before this correction); once the row
         // is overwritten these values exist nowhere else, so they must be captured for the feedback pair.
-        $machineDraft = $this->flattenFields($row, $translatableFields);
+        $machineDraft        = $this->flattenFields($row, $translatableFields);
+        $machineCustomFields = $this->collectCustomFields($row, $properties);
 
         // Overwrite each translated field; anything not submitted keeps the row's current value.
         $row = $this->applyTranslation($row, $translatableFields, $data);
@@ -162,6 +262,19 @@ class TranslatorfeedbackModel extends FormModel
         // The values now on the row are the human correction - the counterpart to the
         // machine draft captured above. Paired field by field, these become the feedback rows.
         $humanCorrection = $this->flattenFields($row, $translatableFields);
+
+        // Custom fields are stored apart from the columns: put the corrected values on the draft for the
+        // managing model to persist, and fold both sides into the feedback maps under a namespaced key.
+        $submittedCustomFields = (array) ($data['com_fields'] ?? []);
+
+        foreach ($machineCustomFields as $name => $customField) {
+            $machineDraft[self::CUSTOM_FIELD_PREFIX . $name]    = $customField['value'];
+            $humanCorrection[self::CUSTOM_FIELD_PREFIX . $name] = (string) ($submittedCustomFields[$name] ?? $customField['value']);
+        }
+
+        if ($submittedCustomFields !== []) {
+            $row['com_fields'] = $submittedCustomFields;
+        }
 
         // com_content's edit form works on a single combined body; keep it consistent with the two columns.
         if (\array_key_exists('introtext', $row) || \array_key_exists('fulltext', $row)) {
@@ -251,6 +364,11 @@ class TranslatorfeedbackModel extends FormModel
         $targetLanguage = (string) $item->target_language;
         $translatorId   = (int) $this->getCurrentUser()->id;
         $db             = $this->getDatabase();
+
+        // The custom-field source values feed the same pairs, under the namespaced key save() used.
+        foreach ((array) $item->source_custom_fields as $name => $customField) {
+            $sourceValues[self::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+        }
 
         foreach ($machineDraft as $field => $machineValue) {
             // Only changed fields are worth learning from - an untouched field is not a correction.
@@ -359,10 +477,50 @@ class TranslatorfeedbackModel extends FormModel
     }
 
     /**
+     * Gather an item's translatable custom-field values, keyed by field name.
+     *
+     * Read with FieldsHelper directly (the raw stored value, not the display HTML), the same read
+     * the producer uses, and limited to the translatable types so the editor shows only fields a
+     * translator can correct. A content type with no custom-field context returns nothing.
+     *
+     * @param   array  $item        The item's column values.
+     * @param   array  $properties  The content type's properties from the map.
+     *
+     * @return  array  Per field name, ['label' => string, 'value' => string, 'type' => string].
+     *
+     * @since   0.4.0
+     */
+    private function collectCustomFields(array $item, array $properties): array
+    {
+        $context = (string) ($properties['context_custom_fields'] ?? '');
+
+        if ($context === '') {
+            return [];
+        }
+
+        $customFields = [];
+
+        foreach (FieldsHelper::getFields($context, $item) as $field) {
+            if (!\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
+                continue;
+            }
+
+            $customFields[$field->name] = [
+                'label' => (string) $field->label,
+                'value' => (string) $field->rawvalue,
+                'type'  => (string) $field->type,
+            ];
+        }
+
+        return $customFields;
+    }
+
+    /**
      * Get the source item and its target-language translation.
      *
-     * @return  object  { content_id, content_type, target_language, source_language,
-     *                    source_item, translation_item, source_values, translatable_fields } - the items may be null.
+     * @return  object  { content_id, content_type, target_language, source_language, source_item,
+     *                    translation_item, source_values, source_custom_fields, translation_custom_fields,
+     *                    translatable_fields } - the items may be null.
      *
      * @since   0.2.0
      */
@@ -395,14 +553,16 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         $this->item = (object) [
-            'content_id'          => $contentId,
-            'content_type'        => $contentType,
-            'target_language'     => $targetLanguage,
-            'source_language'     => $sourceItem !== null ? (string) ($sourceItem['language'] ?? '') : '',
-            'source_item'         => $sourceItem,
-            'translation_item'    => $translationItem,
-            'source_values'       => $sourceItem !== null ? $this->flattenFields($sourceItem, $translatableFields) : [],
-            'translatable_fields' => $translatableFields,
+            'content_id'                => $contentId,
+            'content_type'              => $contentType,
+            'target_language'           => $targetLanguage,
+            'source_language'           => $sourceItem !== null ? (string) ($sourceItem['language'] ?? '') : '',
+            'source_item'               => $sourceItem,
+            'translation_item'          => $translationItem,
+            'source_values'             => $sourceItem !== null ? $this->flattenFields($sourceItem, $translatableFields) : [],
+            'source_custom_fields'      => $sourceItem !== null ? $this->collectCustomFields($sourceItem, $properties) : [],
+            'translation_custom_fields' => $translationItem !== null ? $this->collectCustomFields($translationItem, $properties) : [],
+            'translatable_fields'       => $translatableFields,
         ];
 
         return $this->item;

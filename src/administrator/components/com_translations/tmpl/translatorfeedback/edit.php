@@ -46,7 +46,7 @@ $originalText = function ($value) {
 
 // Render one paired field row: the read-only source value beside its editable translation.
 // An editor field shows its body as a card; a textarea gets a taller source box to match its input.
-$fieldRow = function ($field, $sourceValue) use ($form, $originalBody, $originalText, $hasTranslation) {
+$fieldRow = function ($field, $sourceValue, $input, $fill = false) use ($originalBody, $originalText, $hasTranslation) {
     $type  = strtolower((string) $field->getAttribute('type'));
     $label = Text::_((string) $field->getAttribute('label'));
 
@@ -56,17 +56,17 @@ $fieldRow = function ($field, $sourceValue) use ($form, $originalBody, $original
             <div class="row">
                 <div class="col-lg-6">
                     <?php // Original shown as a card so Atum paints its surface and header label in both light and dark; the header doubles as the field label and aligns the body with the editor. ?>
-                    <div class="card border translations-readonly">
+                    <div class="card border translations-readonly<?php echo $fill ? ' h-100 d-flex flex-column' : ''; ?>">
                         <div class="card-header fw-bold">
                             <span class="icon-lock opacity-75 me-2" aria-hidden="true"></span><?php echo $label; ?>
                         </div>
                         <?php // Body is trusted, author-supplied HTML (rendered as the managing component does). ?>
-                        <div class="card-body bg-body-tertiary translations-readonly-body<?php echo trim((string) $sourceValue) === '' ? ' translations-readonly-empty' : ''; ?>"><?php echo $originalBody($sourceValue); ?></div>
+                        <div class="card-body bg-body-tertiary <?php echo $fill ? 'translations-readonly-fill' : 'translations-readonly-body'; ?><?php echo trim((string) $sourceValue) === '' ? ' translations-readonly-empty' : ''; ?>"><?php echo $originalBody($sourceValue); ?></div>
                     </div>
                 </div>
                 <div class="col-lg-6">
                     <?php if ($hasTranslation) : ?>
-                        <?php echo $form->getInput($field->getAttribute('name')); ?>
+                        <?php echo $input; ?>
                     <?php endif; ?>
                 </div>
             </div>
@@ -86,7 +86,7 @@ $fieldRow = function ($field, $sourceValue) use ($form, $originalBody, $original
             </div>
             <div class="col-lg-6">
                 <?php if ($hasTranslation) : ?>
-                    <?php echo $form->getInput($field->getAttribute('name')); ?>
+                    <?php echo $input; ?>
                 <?php endif; ?>
             </div>
         </div>
@@ -142,9 +142,22 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
                 $key         = substr((string) $field->getAttribute('name'), \strlen('translation_'));
                 $sourceValue = $sourceValues[$key] ?? '';
                 ?>
-                <?php $fieldRow($field, $sourceValue); ?>
+                <?php $fieldRow($field, $sourceValue, $form->getInput($field->getAttribute('name'))); ?>
             <?php endforeach; ?>
         <?php endforeach; ?>
+
+        <?php // Custom fields are injected into the com_fields group by the model; show the translatable ones beside the source. ?>
+        <?php $customFields = $form->getGroup('com_fields'); ?>
+        <?php if ($customFields !== []) : ?>
+            <h2 class="translations-section-heading"><?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_CUSTOM_FIELDS'); ?></h2>
+            <?php foreach ($customFields as $field) : ?>
+                <?php
+                $name        = (string) $field->getAttribute('name');
+                $sourceValue = $this->item->source_custom_fields[$name]['value'] ?? '';
+                ?>
+                <?php $fieldRow($field, $sourceValue, $form->getInput($name, 'com_fields'), true); ?>
+            <?php endforeach; ?>
+        <?php endif; ?>
     <?php endif; ?>
 
     <input type="hidden" name="task" value="">
