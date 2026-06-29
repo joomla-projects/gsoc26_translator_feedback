@@ -20,8 +20,10 @@ use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
+use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Fields\Administrator\Model\FieldModel;
+use Joomla\Component\Translations\Administrator\Event\TranslateEvent;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
@@ -361,28 +363,47 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
-     * Stand-in translation until a translation provider plugin supplies the real one.
+     * Translate the collected strings by asking the "translation" plugin group.
      *
-     * Returns each string prefixed with the target language so a draft is visibly "translated"
-     * for testing, without calling any external service. Empty strings stay empty so the draft
-     * gains no text the source does not have. This is the single point a provider plugin replaces.
+     * The whole collection is handed over as one onTranslate event so a provider keeps
+     * the context between an item's strings. The first provider that returns translations
+     * wins; with no provider enabled there is nothing to translate with, so this fails.
      *
-     * @param   array   $strings         The source strings keyed by field name.
-     * @param   string  $targetLanguage  The target language code, e.g. 'fr-FR'.
+     * @param   array   $strings         The source strings keyed by field.
+     * @param   string  $sourceLanguage  The source language code.
+     * @param   string  $targetLanguage  The target language code.
      *
-     * @return  array  The mock-translated strings, keyed as given.
+     * @return  array  The translated strings, keyed as given.
      *
-     * @since   0.3.0
+     * @throws  \RuntimeException  When no translation provider returns a translation.
+     *
+     * @since   0.4.0
      */
-    private function mockTranslate(array $strings, string $targetLanguage): array
+    private function translateStrings(array $strings, string $sourceLanguage, string $targetLanguage): array
     {
-        foreach ($strings as $field => $text) {
-            $strings[$field] = trim($text) === ''
-                ? $text
-                : \sprintf('[MOCK:%s] %s', $targetLanguage, $text);
+        // No strings means nothing for a provider to translate.
+        if ($strings === []) {
+            return $strings;
         }
 
-        return $strings;
+        $dispatcher = $this->getDispatcher();
+        PluginHelper::importPlugin('translation', null, true, $dispatcher);
+
+        $event = new TranslateEvent('onTranslate', [
+            'sourceStrings'  => $strings,
+            'sourceLanguage' => $sourceLanguage,
+            'targetLanguage' => $targetLanguage,
+        ]);
+        $dispatcher->dispatch('onTranslate', $event);
+
+        // Use the first provider that returned translations.
+        foreach ((array) $event->getArgument('result', []) as $providerResult) {
+            if (\is_array($providerResult) && $providerResult !== []) {
+                return $providerResult;
+            }
+        }
+
+        throw new \RuntimeException('No translation provider is enabled. Enable a translation plugin to translate content.');
     }
 
     /**
@@ -479,7 +500,7 @@ class TranslationModel extends BaseDatabaseModel
             }
         }
 
-        $translated = $this->mockTranslate($strings, $targetLanguage);
+        $translated = $this->translateStrings($strings, (string) $sourceItem['language'], $targetLanguage);
         $fields     = $this->packTranslatedFields($sourceItem, $translatableFields, $translated);
 
         $draft = array_merge($fields, [
