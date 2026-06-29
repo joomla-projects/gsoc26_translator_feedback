@@ -126,6 +126,11 @@ data key written onto the draft to the related content type, for an article
 `{ "tags": "com_tags.tag" }`. The source's tag ids are remapped to their translations and
 written back under that key; an id with no translation yet is kept.
 
+**`context_tags`** (string, optional) - the type alias the item's tags are stored under in the
+content item tag map, used when reading the source's tags for `m2m_relation`. It defaults to the
+content type's own key, which is correct for an article (`com_content.article`); a com_content
+category's tags are stored under `com_content.category`, so the category entry sets it explicitly.
+
 ## Example: the article entry
 
 ```json

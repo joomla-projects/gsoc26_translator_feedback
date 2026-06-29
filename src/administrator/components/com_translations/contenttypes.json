@@ -37,7 +37,9 @@
             "copyCustomFieldAssignments": true,
             "draftCopyFields": ["parent_id", "extension", "access", "created_user_id"],
             "stateField": "published",
-            "modelState": { "category.extension": "com_content" }
+            "modelState": { "category.extension": "com_content" },
+            "context_tags": "com_content.category",
+            "m2m_relation": { "tags": "com_tags.tag" }
         },
         "com_tags.tag": {
             "translatableFields": [

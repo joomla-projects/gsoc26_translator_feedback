@@ -542,10 +542,13 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         // Repoint many-to-many relations (tags) at the related items' translations, keeping the source's where none exists yet.
+        // Tags are keyed in the map by a type alias that can differ from our key (a category's tags use com_content.category).
+        $tagTypeAlias = (string) ($properties['context_tags'] ?? $contentType);
+
         foreach ((array) ($properties['m2m_relation'] ?? []) as $dataKey => $relatedType) {
             $translatedIds = [];
 
-            foreach ($this->getSourceTagIds($contentType, (int) $sourceItem['id']) as $relatedItemId) {
+            foreach ($this->getSourceTagIds($tagTypeAlias, (int) $sourceItem['id']) as $relatedItemId) {
                 $translatedIds[] = $this->translatedRelatedId($relatedItemId, (string) $relatedType, $targetLanguage) ?? $relatedItemId;
             }
 
@@ -637,24 +640,24 @@ class TranslationModel extends BaseDatabaseModel
      * Load the tag ids attached to a source item.
      *
      * Tags live in the content item tag map rather than on the item's own table, so they are
-     * read separately, keyed by the item's content type alias and id.
+     * read separately, keyed by the type alias the tags are stored under and the item id.
      *
-     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
+     * @param   string   $tagTypeAlias  The type alias the item's tags are stored under, e.g. 'com_content.article'.
      * @param   integer  $sourceItemId  The source item id.
      *
      * @return  integer[]  The attached tag ids.
      *
      * @since   0.4.0
      */
-    private function getSourceTagIds(string $contentType, int $sourceItemId): array
+    private function getSourceTagIds(string $tagTypeAlias, int $sourceItemId): array
     {
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('tag_id'))
             ->from($db->quoteName('#__contentitem_tag_map'))
-            ->where($db->quoteName('type_alias') . ' = :contentType')
+            ->where($db->quoteName('type_alias') . ' = :tagTypeAlias')
             ->where($db->quoteName('content_item_id') . ' = :contentId')
-            ->bind(':contentType', $contentType, ParameterType::STRING)
+            ->bind(':tagTypeAlias', $tagTypeAlias, ParameterType::STRING)
             ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
