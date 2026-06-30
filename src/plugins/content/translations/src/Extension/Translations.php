@@ -16,6 +16,7 @@ namespace Joomla\Plugin\Content\Translations\Extension;
 
 use Joomla\CMS\Application\CMSApplicationInterface;
 use Joomla\CMS\Component\ComponentHelper;
+use Joomla\CMS\Event\Model\AfterCategoryChangeStateEvent;
 use Joomla\CMS\Event\Model\AfterChangeStateEvent;
 use Joomla\CMS\Event\Model\AfterDeleteEvent;
 use Joomla\CMS\Event\Model\AfterSaveEvent;
@@ -26,6 +27,7 @@ use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\DatabaseAwareInterface;
 use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Database\ParameterType;
@@ -33,8 +35,8 @@ use Joomla\Event\SubscriberInterface;
 
 /**
  * Content plugin for the Translations component. Adds the "no need for translation"
- * toggle to the article form, and cascades a source article's trash or delete to its
- * translated items and the queue rows that track them.
+ * toggle to the article form, and cascades a source item's trash or delete to its
+ * translated items and the queue rows that track them, for every managed content type.
  *
  * @since  0.3.0
  */
@@ -67,30 +69,6 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private const FIELD = 'no_need_for_translation';
 
     /**
-     * The #__associations context that links an article's language versions.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const ASSOCIATIONS_CONTEXT = 'com_content.item';
-
-    /**
-     * The component booted to trash or delete an article's translations.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const COMPONENT = 'com_content';
-
-    /**
-     * The admin model used to trash or delete an article's translations.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const MODEL = 'Article';
-
-    /**
      * Translated item ids captured per source id during onContentBeforeDelete, before
      * core removes the association link, so onContentAfterDelete can delete them.
      *
@@ -100,8 +78,8 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private array $capturedTranslations = [];
 
     /**
-     * Per-language queue cells captured during onContentBeforeDelete when the deleted article is one of
-     * our translations, so onContentAfterDelete can clear the stale state row once the article is gone.
+     * Per-language queue cells captured during onContentBeforeDelete when the deleted item is one of
+     * our translations, so onContentAfterDelete can clear the stale state row once the item is gone.
      *
      * @var    array<int, array{queueId: int, language: string}>
      * @since  0.4.0
@@ -122,6 +100,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             'onContentPrepareForm'  => 'onContentPrepareForm',
             'onContentAfterSave'    => 'onContentAfterSave',
             'onContentChangeState'  => 'onContentChangeState',
+            'onCategoryChangeState' => 'onCategoryChangeState',
             'onContentBeforeDelete' => 'onContentBeforeDelete',
             'onContentAfterDelete'  => 'onContentAfterDelete',
         ];
@@ -226,7 +205,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Trash an article's translations when the source article is trashed.
+     * Trash a source item's translations when the source is trashed.
+     *
+     * Fires for articles, tags and menu items; categories use onCategoryChangeState.
      *
      * @param   AfterChangeStateEvent  $event  The event.
      *
@@ -237,23 +218,49 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     public function onContentChangeState(AfterChangeStateEvent $event): void
     {
         // -2 is the trashed state; publish, unpublish and archive do not cascade.
-        if ($event->getContext() !== self::CONTENT_TYPE || $event->getValue() !== -2) {
+        if ($event->getValue() !== -2) {
+            return;
+        }
+
+        $properties = $this->managedProperties($event->getContext());
+
+        if ($properties === null) {
             return;
         }
 
         foreach ($event->getPks() as $pk) {
-            $sourceId = (int) $pk;
+            $this->cascadeTrash((int) $pk, $event->getContext(), $properties);
+        }
+    }
 
-            // Only sources this component manages cascade.
-            if ($this->queueId($sourceId) === null) {
-                continue;
-            }
+    /**
+     * Trash a category's translations when the source category is trashed.
+     *
+     * Categories fire their own change-state event, carrying the extension as the context, so this
+     * mirrors onContentChangeState for the category content type.
+     *
+     * @param   AfterCategoryChangeStateEvent  $event  The event.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    public function onCategoryChangeState(AfterCategoryChangeStateEvent $event): void
+    {
+        if ($event->getValue() !== -2) {
+            return;
+        }
 
-            $translations = $this->translationGroupIds($sourceId);
+        // This event fires only for categories; its context is the extension, not the content type.
+        $contentType = 'com_categories.category';
+        $properties  = $this->managedProperties($contentType);
 
-            if ($translations !== []) {
-                $this->trashTranslations($translations);
-            }
+        if ($properties === null || $event->getContext() !== ($properties['limitToExtension'] ?? null)) {
+            return;
+        }
+
+        foreach ($event->getPks() as $pk) {
+            $this->cascadeTrash((int) $pk, $contentType, $properties);
         }
     }
 
@@ -269,23 +276,27 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentBeforeDelete(BeforeDeleteEvent $event): void
     {
-        if ($event->getContext() !== self::CONTENT_TYPE) {
+        $properties = $this->managedProperties($event->getContext());
+
+        if ($properties === null) {
             return;
         }
 
-        $item   = $event->getItem();
-        $itemId = (int) $item->id;
+        $contentType = $event->getContext();
+        $context     = (string) $properties['context_associations'];
+        $item        = $event->getItem();
+        $itemId      = (int) $item->id;
 
         // Core removes the association link during the delete that follows, so anything that needs it is
         // read now. A managed source captures its translation group (an empty array still marks the source
         // whose queue row to clean); otherwise the item may be one of our translation drafts.
-        if ($this->queueId($itemId) !== null) {
-            $this->capturedTranslations[$itemId] = $this->translationGroupIds($itemId);
+        if ($this->queueId($itemId, $contentType) !== null) {
+            $this->capturedTranslations[$itemId] = $this->translationGroupIds($itemId, $context);
 
             return;
         }
 
-        $queueId = $this->sourceQueueIdForTranslation($itemId);
+        $queueId = $this->sourceQueueIdForTranslation($itemId, $context, $contentType);
 
         if ($queueId !== null) {
             $this->capturedCells[$itemId] = [
@@ -306,11 +317,14 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentAfterDelete(AfterDeleteEvent $event): void
     {
-        if ($event->getContext() !== self::CONTENT_TYPE) {
+        $properties = $this->managedProperties($event->getContext());
+
+        if ($properties === null) {
             return;
         }
 
-        $itemId = (int) $event->getItem()->id;
+        $contentType = $event->getContext();
+        $itemId      = (int) $event->getItem()->id;
 
         // A managed source: delete its translations and clean its queue rows.
         if (isset($this->capturedTranslations[$itemId])) {
@@ -319,10 +333,10 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
             // The translations were trashed with the source, so they can now be deleted.
             if ($translations !== []) {
-                $this->deleteTranslations($translations);
+                $this->deleteTranslations($translations, $properties);
             }
 
-            $this->removeFromQueue($itemId);
+            $this->removeFromQueue($itemId, $contentType);
 
             return;
         }
@@ -346,6 +360,47 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private function getSourceLanguage(): string
     {
         return (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
+    }
+
+    /**
+     * The content type's translation properties from the map, or null when the type is not managed.
+     *
+     * @param   string  $contentType  The content type key from the event.
+     *
+     * @return  array|null
+     *
+     * @since   0.4.0
+     */
+    private function managedProperties(string $contentType): ?array
+    {
+        return \in_array($contentType, ContentTypesHelper::getContentTypes(), true)
+            ? ContentTypesHelper::getProperties($contentType)
+            : null;
+    }
+
+    /**
+     * Trash a managed source's translations.
+     *
+     * @param   integer  $sourceId     The source item id.
+     * @param   string   $contentType  The content type key.
+     * @param   array    $properties   The content type's properties.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    private function cascadeTrash(int $sourceId, string $contentType, array $properties): void
+    {
+        // Only sources this component manages cascade.
+        if ($this->queueId($sourceId, $contentType) === null) {
+            return;
+        }
+
+        $translations = $this->translationGroupIds($sourceId, (string) $properties['context_associations']);
+
+        if ($translations !== []) {
+            $this->trashTranslations($translations, $properties);
+        }
     }
 
     /**
@@ -388,7 +443,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private function storeFlag(int $articleId, int $doNotTranslate): void
     {
         $db      = $this->getDatabase();
-        $queueId = $this->queueId($articleId);
+        $queueId = $this->queueId($articleId, self::CONTENT_TYPE);
 
         if ($queueId !== null) {
             $row = (object) [
@@ -414,19 +469,17 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * The article's queue row id, or null when the article is not in the queue.
+     * A source item's queue row id, or null when the item is not in the queue.
      *
-     * @param   integer  $sourceId  The article id.
+     * @param   integer  $sourceId     The source item id.
+     * @param   string   $contentType  The content type key.
      *
      * @return  integer|null
      *
      * @since   0.4.0
      */
-    private function queueId(int $sourceId): ?int
+    private function queueId(int $sourceId, string $contentType): ?int
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('id'))
@@ -443,19 +496,17 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * The ids of an article's translations: its association group, minus itself.
+     * The ids of a source item's translations: its association group, minus itself.
      *
-     * @param   integer  $sourceId  The source article id.
+     * @param   integer  $sourceId  The source item id.
+     * @param   string   $context   The #__associations context for the content type.
      *
      * @return  int[]
      *
      * @since   0.4.0
      */
-    private function translationGroupIds(int $sourceId): array
+    private function translationGroupIds(int $sourceId, string $context): array
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $context = self::ASSOCIATIONS_CONTEXT;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('groupAssociation.id'))
@@ -489,20 +540,18 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      *
      * A translation has no queue row of its own; its source does. The draft and its source share an
      * #__associations key, and the group member that has a #__translations_queue row is the source.
-     * Returns null when the article is not one of our translations (a plain multilingual item).
+     * Returns null when the item is not one of our translations (a plain multilingual item).
      *
-     * @param   integer  $translationId  The translation draft's article id.
+     * @param   integer  $translationId  The translation draft's item id.
+     * @param   string   $context        The #__associations context for the content type.
+     * @param   string   $contentType    The content type key.
      *
      * @return  integer|null
      *
      * @since   0.4.0
      */
-    private function sourceQueueIdForTranslation(int $translationId): ?int
+    private function sourceQueueIdForTranslation(int $translationId, string $context, string $contentType): ?int
     {
-        // Bound parameters are passed by reference, so the constants need variables.
-        $context     = self::ASSOCIATIONS_CONTEXT;
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('queue.id'))
@@ -556,54 +605,58 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Trash the given articles through the managing component's model.
+     * Trash the given items through the managing component's model.
      *
-     * @param   int[]  $ids  The article ids.
+     * @param   int[]  $ids         The item ids.
+     * @param   array  $properties  The content type's properties.
      *
      * @return  void
      *
      * @since   0.4.0
      */
-    private function trashTranslations(array $ids): void
+    private function trashTranslations(array $ids, array $properties): void
     {
         // publish() takes the ids by reference; -2 is the trashed state.
         $pks = $ids;
-        $this->articleModel()->publish($pks, -2);
+        $this->model($properties)->publish($pks, -2);
     }
 
     /**
-     * Delete the given articles through the managing component's model.
+     * Delete the given items through the managing component's model.
      *
-     * @param   int[]  $ids  The article ids.
+     * @param   int[]  $ids         The item ids.
+     * @param   array  $properties  The content type's properties.
      *
      * @return  void
      *
      * @since   0.4.0
      */
-    private function deleteTranslations(array $ids): void
+    private function deleteTranslations(array $ids, array $properties): void
     {
         // delete() takes the ids by reference.
         $pks = $ids;
-        $this->articleModel()->delete($pks);
+        $this->model($properties)->delete($pks);
     }
 
     /**
      * Boot the managing component and create its admin model.
      *
+     * @param   array  $properties  The content type's properties.
+     *
      * @return  AdminModel
      *
      * @since   0.4.0
      */
-    private function articleModel(): AdminModel
+    private function model(array $properties): AdminModel
     {
         /** @var CMSApplicationInterface $application */
         $application = $this->getApplication();
 
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
-        $component = $application->bootComponent(self::COMPONENT);
+        $component = $application->bootComponent((string) $properties['component']);
 
         /** @var AdminModel $model */
-        $model = $component->getMVCFactory()->createModel(self::MODEL, 'Administrator', ['ignore_request' => true]);
+        $model = $component->getMVCFactory()->createModel((string) $properties['model'], 'Administrator', ['ignore_request' => true]);
 
         return $model;
     }
@@ -611,15 +664,16 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     /**
      * Remove a source's queue row and its per-language state rows.
      *
-     * @param   integer  $sourceId  The source article id.
+     * @param   integer  $sourceId     The source item id.
+     * @param   string   $contentType  The content type key.
      *
      * @return  void
      *
      * @since   0.4.0
      */
-    private function removeFromQueue(int $sourceId): void
+    private function removeFromQueue(int $sourceId, string $contentType): void
     {
-        $queueId = $this->queueId($sourceId);
+        $queueId = $this->queueId($sourceId, $contentType);
 
         if ($queueId === null) {
             return;
