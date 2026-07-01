@@ -25,6 +25,7 @@
 					label="PLG_TRANSLATION_CLAUDE_FIELD_API_KEY_LABEL"
 					description="PLG_TRANSLATION_CLAUDE_FIELD_API_KEY_DESC"
 					autocomplete="off"
+					maxlength="128"
 				/>
 				<field
 					name="model"
