@@ -159,7 +159,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
     private function requestTranslation(array $strings, string $sourceLanguage, string $targetLanguage, string $apiKey): array
     {
         $payload = [
-            'model'         => (string) $this->params->get('model', 'claude-sonnet-4-6'),
+            'model'         => (string) $this->params->get('model', 'claude-sonnet-5'),
             'max_tokens'    => self::MAX_TOKENS,
             'system'        => $this->systemPrompt($sourceLanguage, $targetLanguage),
             'messages'      => [
