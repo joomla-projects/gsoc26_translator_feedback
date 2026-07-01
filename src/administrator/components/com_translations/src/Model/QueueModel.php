@@ -369,9 +369,9 @@ class QueueModel extends ListModel
     }
 
     /**
-     * The content types the queue can show, as a list of aliases for the tab strip.
+     * The content types the queue can show, as a list of keys for the tab strip.
      *
-     * @return  string[]  Content type aliases, e.g. 'com_content.article'.
+     * @return  string[]  Content type keys, e.g. 'com_content.article'.
      *
      * @since   0.4.0
      */

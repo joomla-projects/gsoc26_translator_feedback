@@ -62,7 +62,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   integer                  $sourceItemId     The source item id.
      * @param   string                   $targetLanguage   The target language code, e.g. 'fr-FR'.
-     * @param   string                   $contentType      The content type alias, e.g. 'com_content.article'.
+     * @param   string                   $contentType      The content type key, e.g. 'com_content.article'.
      * @param   CMSApplicationInterface  $application      The application, used to boot the component.
      *
      * @return  void
@@ -103,7 +103,7 @@ class TranslationModel extends BaseDatabaseModel
      * Clear the "no need for translation" flag on a source item's queue row.
      *
      * @param   integer  $sourceItemId  The source item id.
-     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
+     * @param   string   $contentType   The content type key, e.g. 'com_content.article'.
      *
      * @return  void
      *
@@ -164,7 +164,7 @@ class TranslationModel extends BaseDatabaseModel
      * is translatable.
      *
      * @param   integer  $sourceItemId  The source item id.
-     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
+     * @param   string   $contentType   The content type key, e.g. 'com_content.article'.
      *
      * @return  boolean  True when the item must not be translated.
      *
@@ -463,7 +463,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   array                    $sourceItem      The source item's column values.
      * @param   string                   $targetLanguage  The target language code.
-     * @param   string                   $contentType     The content type alias, e.g. 'com_content.article'.
+     * @param   string                   $contentType     The content type key, e.g. 'com_content.article'.
      * @param   CMSApplicationInterface  $application     The application, used to boot the component.
      * @param   array                    $properties      The content type's properties from the map.
      *
@@ -643,7 +643,7 @@ class TranslationModel extends BaseDatabaseModel
      * and returns its target language member, or null when the related item has no translation yet.
      *
      * @param   integer  $relatedItemId   The source related item id, e.g. a category id.
-     * @param   string   $relatedType     The related content type alias, e.g. 'com_categories.category'.
+     * @param   string   $relatedType     The related content type key, e.g. 'com_categories.category'.
      * @param   string   $targetLanguage  The target language code.
      *
      * @return  integer|null  The translated related item id, or null when it has none.
@@ -840,7 +840,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @param   integer  $sourceItemId    The source item id.
      * @param   string   $targetLanguage  The target language code.
-     * @param   string   $contentType     The content type alias, e.g. 'com_content.article'.
+     * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
      *
      * @return  void
      *
@@ -895,7 +895,7 @@ class TranslationModel extends BaseDatabaseModel
      * A source item gets its row with its first translation.
      *
      * @param   integer  $sourceItemId  The source item id.
-     * @param   string   $contentType   The content type alias, e.g. 'com_content.article'.
+     * @param   string   $contentType   The content type key, e.g. 'com_content.article'.
      *
      * @return  integer  The queue row id.
      *

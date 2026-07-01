@@ -84,7 +84,7 @@ class HtmlView extends BaseHtmlView
     public $sourceLanguageTitle = '';
 
     /**
-     * Content type aliases for the queue tab strip.
+     * Content type keys for the queue tab strip.
      *
      * @var    string[]
      * @since  0.4.0
