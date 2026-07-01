@@ -32,7 +32,7 @@
 					type="list"
 					label="PLG_TRANSLATION_CLAUDE_FIELD_MODEL_LABEL"
 					description="PLG_TRANSLATION_CLAUDE_FIELD_MODEL_DESC"
-					default="claude-opus-4-8"
+					default="claude-sonnet-4-6"
 				>
 					<option value="claude-opus-4-8">Claude Opus 4.8</option>
 					<option value="claude-sonnet-4-6">Claude Sonnet 4.6</option>
