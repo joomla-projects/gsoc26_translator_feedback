@@ -33,7 +33,7 @@ class ContentTypesHelper
     /**
      * Read one content type's translation properties.
      *
-     * @param   string  $contentType  The content type alias, e.g. 'com_content.article'.
+     * @param   string  $contentType  The content type key, e.g. 'com_content.article'.
      *
      * @return  array  The content type's properties.
      *
@@ -53,9 +53,9 @@ class ContentTypesHelper
     }
 
     /**
-     * List every mapped content type alias.
+     * List every mapped content type key.
      *
-     * @return  string[]  The content type aliases, e.g. 'com_content.article'.
+     * @return  string[]  The content type keys, e.g. 'com_content.article'.
      *
      * @since   0.4.0
      */
@@ -67,7 +67,7 @@ class ContentTypesHelper
     /**
      * Load the content type map once from contenttypes.json.
      *
-     * @return  array  The map keyed by content type alias.
+     * @return  array  The map keyed by content type key.
      *
      * @throws  \RuntimeException  If the map file is missing.
      *

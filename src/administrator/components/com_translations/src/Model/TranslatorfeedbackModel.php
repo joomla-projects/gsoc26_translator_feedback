@@ -317,7 +317,7 @@ class TranslatorfeedbackModel extends FormModel
      * queue row, since feedback cannot be anchored without one.
      *
      * @param   integer  $contentId    The source item id.
-     * @param   string   $contentType  The content type alias, e.g. 'com_content.article'.
+     * @param   string   $contentType  The content type key, e.g. 'com_content.article'.
      *
      * @return  integer|null  The queue row id, or null when none exists.
      *
@@ -639,7 +639,7 @@ class TranslatorfeedbackModel extends FormModel
     /**
      * The content type's short key, used to name its feedback form.
      *
-     * The map keys items by their full alias (com_content.article); the form file is
+     * The map keys items by their full key (com_content.article); the form file is
      * named by the item part (translatorfeedback_article).
      *
      * @return  string  The key after the last dot, e.g. 'article'.
