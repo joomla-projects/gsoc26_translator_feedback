@@ -159,12 +159,15 @@ final class Claude extends CMSPlugin implements SubscriberInterface
     private function requestTranslation(array $strings, string $sourceLanguage, string $targetLanguage, string $apiKey): array
     {
         $payload = [
-            'model'      => (string) $this->params->get('model', 'claude-opus-4-8'),
-            'max_tokens' => self::MAX_TOKENS,
-            'system'     => $this->systemPrompt($sourceLanguage, $targetLanguage),
-            'messages'   => [
+            'model'         => (string) $this->params->get('model', 'claude-sonnet-4-6'),
+            'max_tokens'    => self::MAX_TOKENS,
+            'system'        => $this->systemPrompt($sourceLanguage, $targetLanguage),
+            'messages'      => [
                 ['role' => 'user', 'content' => json_encode($strings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)],
             ],
+            // Constrain the reply to a JSON object with exactly these string keys, so a long
+            // HTML value can never come back as prose or malformed JSON the decoder would reject.
+            'output_config' => ['format' => $this->responseFormat(array_keys($strings))],
         ];
 
         $headers = [
@@ -230,6 +233,37 @@ final class Claude extends CMSPlugin implements SubscriberInterface
     }
 
     /**
+     * Build the structured-output format that pins the reply to a JSON object with
+     * exactly the given string keys. The API then constrains the model to valid,
+     * schema-matching JSON, so a long HTML value cannot return as prose or with the
+     * broken escaping (stray quotes or newlines) that a free-form reply can carry.
+     *
+     * @param   array  $keys  The field keys expected back.
+     *
+     * @return  array
+     *
+     * @since   0.4.0
+     */
+    private function responseFormat(array $keys): array
+    {
+        $properties = [];
+
+        foreach ($keys as $key) {
+            $properties[$key] = ['type' => 'string'];
+        }
+
+        return [
+            'type'   => 'json_schema',
+            'schema' => [
+                'type'                 => 'object',
+                'properties'           => $properties,
+                'required'             => $keys,
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+
+    /**
      * Pull the translated strings out of the API response.
      *
      * Reads the assistant's text, decodes the JSON object it holds, and keeps only the
@@ -250,6 +284,10 @@ final class Claude extends CMSPlugin implements SubscriberInterface
 
         if (($response['stop_reason'] ?? '') === 'refusal') {
             throw new \RuntimeException('The Claude API refused the translation request.');
+        }
+
+        if (($response['stop_reason'] ?? '') === 'max_tokens') {
+            throw new \RuntimeException('The Claude API response was cut off because the item is too long to translate in one request.');
         }
 
         $text = '';
