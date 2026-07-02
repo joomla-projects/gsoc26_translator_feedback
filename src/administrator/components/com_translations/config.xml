@@ -16,4 +16,20 @@
 			class="alert alert-warning"
 		/>
 	</fieldset>
+
+	<fieldset
+		name="permissions"
+		label="JCONFIG_PERMISSIONS_LABEL"
+		description="JCONFIG_PERMISSIONS_DESC"
+		>
+		<field
+			name="rules"
+			type="rules"
+			label="JCONFIG_PERMISSIONS_LABEL"
+			component="com_translations"
+			section="component"
+			filter="rules"
+			validate="rules"
+		/>
+	</fieldset>
 </config>
