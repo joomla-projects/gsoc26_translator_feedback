@@ -107,6 +107,9 @@ class HtmlView extends BaseHtmlView
 
         if ($canDo->get('core.create')) {
             ToolbarHelper::addNew('rule.add');
+
+            // Run the distiller over pending feedback on demand, ahead of the scheduled task.
+            ToolbarHelper::custom('distiller.distill', 'refresh', '', 'COM_TRANSLATIONS_DISTILL_NOW', false);
         }
 
         if ($canDo->get('core.edit.state')) {
