@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="utf-8"?>
+<form>
+    <fieldset name="details">
+        <field
+            name="id"
+            type="hidden"
+        />
+
+        <field
+            name="rule_name"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_NAME_LABEL"
+            required="true"
+            maxlength="255"
+        />
+
+        <field
+            name="rule_type"
+            type="list"
+            label="COM_TRANSLATIONS_RULE_FIELD_TYPE_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_TYPE_DESC"
+            required="true"
+            validate="options"
+            default="terminology"
+            >
+            <option value="terminology">COM_TRANSLATIONS_RULE_TYPE_TERMINOLOGY</option>
+            <option value="style">COM_TRANSLATIONS_RULE_TYPE_STYLE</option>
+            <option value="preservation">COM_TRANSLATIONS_RULE_TYPE_PRESERVATION</option>
+        </field>
+
+        <field
+            name="source_term"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_SOURCE_TERM_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_SOURCE_TERM_DESC"
+            maxlength="255"
+        />
+
+        <field
+            name="target_term"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_TARGET_TERM_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_TARGET_TERM_DESC"
+            maxlength="255"
+        />
+
+        <field
+            name="rule_text"
+            type="textarea"
+            label="COM_TRANSLATIONS_RULE_FIELD_TEXT_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_TEXT_DESC"
+            required="true"
+            rows="6"
+            cols="40"
+        />
+
+        <field
+            name="search_keywords"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_KEYWORDS_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_KEYWORDS_DESC"
+            maxlength="500"
+        />
+    </fieldset>
+
+    <fieldset name="publishing">
+        <field
+            name="target_language"
+            type="contentlanguage"
+            label="COM_TRANSLATIONS_RULE_FIELD_LANGUAGE_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_LANGUAGE_DESC"
+            required="true"
+        />
+
+        <field
+            name="state"
+            type="list"
+            label="JSTATUS"
+            class="form-select-color-state"
+            default="1"
+            validate="options"
+            >
+            <option value="1">JPUBLISHED</option>
+            <option value="0">JUNPUBLISHED</option>
+            <option value="-2">JTRASHED</option>
+        </field>
+
+        <field
+            name="source_origin"
+            type="list"
+            label="COM_TRANSLATIONS_RULE_FIELD_ORIGIN_LABEL"
+            default="distilled"
+            validate="options"
+            >
+            <option value="distilled">COM_TRANSLATIONS_RULE_ORIGIN_DISTILLED</option>
+            <option value="ini_import">COM_TRANSLATIONS_RULE_ORIGIN_INI_IMPORT</option>
+            <option value="wiki_import">COM_TRANSLATIONS_RULE_ORIGIN_WIKI_IMPORT</option>
+        </field>
+
+        <field
+            name="source_feedback_ids"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_FEEDBACK_IDS_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_FEEDBACK_IDS_DESC"
+            class="readonly"
+            readonly="true"
+            filter="unset"
+        />
+
+        <field
+            name="created"
+            type="calendar"
+            label="JGLOBAL_FIELD_CREATED_LABEL"
+            translateformat="true"
+            showtime="true"
+            filter="user_utc"
+        />
+
+        <field
+            name="created_by"
+            type="user"
+            label="JGLOBAL_FIELD_CREATED_BY_LABEL"
+            validate="UserId"
+        />
+
+        <field
+            name="modified"
+            type="calendar"
+            label="JGLOBAL_FIELD_MODIFIED_LABEL"
+            class="readonly"
+            readonly="true"
+            translateformat="true"
+            showtime="true"
+            filter="user_utc"
+        />
+
+        <field
+            name="modified_by"
+            type="user"
+            label="JGLOBAL_FIELD_MODIFIED_BY_LABEL"
+            class="readonly"
+            readonly="true"
+            filter="unset"
+            validate="UserId"
+        />
+
+        <field
+            name="checked_out"
+            type="hidden"
+            filter="unset"
+        />
+
+        <field
+            name="checked_out_time"
+            type="hidden"
+            filter="unset"
+        />
+    </fieldset>
+</form>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<form>
+    <fields name="filter">
+        <field
+            name="search"
+            type="text"
+            label="COM_TRANSLATIONS_FILTER_SEARCH_LABEL"
+            description="COM_TRANSLATIONS_RULES_FILTER_SEARCH_DESC"
+            hint="JSEARCH_FILTER"
+        />
+        <field
+            name="published"
+            type="status"
+            label="JOPTION_FILTER_PUBLISHED"
+            class="js-select-submit-on-change"
+            >
+            <option value="">JOPTION_SELECT_PUBLISHED</option>
+        </field>
+        <field
+            name="rule_type"
+            type="list"
+            label="COM_TRANSLATIONS_RULES_FILTER_TYPE"
+            class="js-select-submit-on-change"
+            >
+            <option value="">COM_TRANSLATIONS_RULES_FILTER_SELECT_TYPE</option>
+            <option value="terminology">COM_TRANSLATIONS_RULE_TYPE_TERMINOLOGY</option>
+            <option value="style">COM_TRANSLATIONS_RULE_TYPE_STYLE</option>
+            <option value="preservation">COM_TRANSLATIONS_RULE_TYPE_PRESERVATION</option>
+        </field>
+        <field
+            name="target_language"
+            type="contentlanguage"
+            label="JOPTION_FILTER_LANGUAGE"
+            class="js-select-submit-on-change"
+            >
+            <option value="">JOPTION_SELECT_LANGUAGE</option>
+        </field>
+        <field
+            name="source_origin"
+            type="list"
+            label="COM_TRANSLATIONS_RULES_FILTER_ORIGIN"
+            class="js-select-submit-on-change"
+            >
+            <option value="">COM_TRANSLATIONS_RULES_FILTER_SELECT_ORIGIN</option>
+            <option value="distilled">COM_TRANSLATIONS_RULE_ORIGIN_DISTILLED</option>
+            <option value="ini_import">COM_TRANSLATIONS_RULE_ORIGIN_INI_IMPORT</option>
+            <option value="wiki_import">COM_TRANSLATIONS_RULE_ORIGIN_WIKI_IMPORT</option>
+        </field>
+    </fields>
+    <fields name="list">
+        <field
+            name="fullordering"
+            type="list"
+            label="JGLOBAL_SORT_BY"
+            default="a.ordering ASC"
+            class="js-select-submit-on-change"
+            >
+            <option value="">JGLOBAL_SORT_BY</option>
+            <option value="a.ordering ASC">JGRID_HEADING_ORDERING_ASC</option>
+            <option value="a.ordering DESC">JGRID_HEADING_ORDERING_DESC</option>
+            <option value="a.state ASC">JSTATUS_ASC</option>
+            <option value="a.state DESC">JSTATUS_DESC</option>
+            <option value="a.rule_name ASC">COM_TRANSLATIONS_RULES_SORT_NAME_ASC</option>
+            <option value="a.rule_name DESC">COM_TRANSLATIONS_RULES_SORT_NAME_DESC</option>
+            <option value="a.rule_type ASC">COM_TRANSLATIONS_RULES_SORT_TYPE_ASC</option>
+            <option value="a.rule_type DESC">COM_TRANSLATIONS_RULES_SORT_TYPE_DESC</option>
+            <option value="language_title ASC">JGRID_HEADING_LANGUAGE_ASC</option>
+            <option value="language_title DESC">JGRID_HEADING_LANGUAGE_DESC</option>
+            <option value="a.confidence ASC">COM_TRANSLATIONS_RULES_SORT_CONFIDENCE_ASC</option>
+            <option value="a.confidence DESC">COM_TRANSLATIONS_RULES_SORT_CONFIDENCE_DESC</option>
+            <option value="a.id ASC">JGRID_HEADING_ID_ASC</option>
+            <option value="a.id DESC">JGRID_HEADING_ID_DESC</option>
+        </field>
+        <field
+            name="limit"
+            type="limitbox"
+            class="input-mini js-select-submit-on-change"
+            default="25"
+        />
+    </fields>
+</form>

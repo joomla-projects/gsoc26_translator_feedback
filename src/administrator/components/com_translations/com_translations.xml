@@ -42,6 +42,7 @@
         <menu link="option=com_translations" img="class:translations">COM_TRANSLATIONS</menu>
         <submenu>
             <menu link="option=com_translations&amp;view=queue" img="class:translations">COM_TRANSLATIONS_SUBMENU_QUEUE</menu>
+            <menu link="option=com_translations&amp;view=rules" img="class:translations">COM_TRANSLATIONS_SUBMENU_RULES</menu>
         </submenu>
     </administration>
 </extension>
