@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="distillation" method="upgrade">
+	<name>plg_distillation_claude</name>
+	<creationDate>2026-07</creationDate>
+	<author>Joomla! Project</author>
+	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<version>0.4.0</version>
+	<description>PLG_DISTILLATION_CLAUDE_XML_DESCRIPTION</description>
+	<namespace path="src">Joomla\Plugin\Distillation\Claude</namespace>
+	<files>
+		<folder plugin="claude">services</folder>
+		<folder>src</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_distillation_claude.ini</language>
+		<language tag="en-GB">language/en-GB/plg_distillation_claude.sys.ini</language>
+	</languages>
+	<config>
+		<fields name="params">
+			<fieldset name="basic">
+				<field
+					name="api_key"
+					type="password"
+					label="PLG_DISTILLATION_CLAUDE_FIELD_API_KEY_LABEL"
+					description="PLG_DISTILLATION_CLAUDE_FIELD_API_KEY_DESC"
+					autocomplete="off"
+					maxlength="128"
+				/>
+				<field
+					name="model"
+					type="list"
+					label="PLG_DISTILLATION_CLAUDE_FIELD_MODEL_LABEL"
+					description="PLG_DISTILLATION_CLAUDE_FIELD_MODEL_DESC"
+					default="claude-sonnet-5"
+				>
+					<option value="claude-opus-4-8">Claude Opus 4.8</option>
+					<option value="claude-sonnet-5">Claude Sonnet 5</option>
+					<option value="claude-haiku-4-5">Claude Haiku 4.5</option>
+				</field>
+			</fieldset>
+		</fields>
+	</config>
+</extension>
