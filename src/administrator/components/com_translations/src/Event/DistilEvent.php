@@ -20,7 +20,7 @@ use Joomla\CMS\Event\Result\ResultTypeArrayAware;
 // phpcs:enable PSR1.Files.SideEffects
 
 /**
- * Event dispatched to the "translation" plugin group to distil rules from feedback.
+ * Event dispatched to the "distillation" plugin group to distil rules from feedback.
  *
  * It carries a batch of translator corrections for one target language, the rules
  * already learned for that language, and the source and target languages; a provider
