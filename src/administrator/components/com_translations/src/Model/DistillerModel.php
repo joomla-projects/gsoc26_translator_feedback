@@ -57,7 +57,7 @@ class DistillerModel extends BaseDatabaseModel
      *
      * @since   0.4.0
      */
-    public function distill(int $batchSize = 30): int
+    public function distill(int $batchSize = 20): int
     {
         $feedback = $this->loadPendingFeedback($batchSize);
 
