@@ -15,6 +15,7 @@ namespace Joomla\Component\Translations\Administrator\View\Translatorfeedback;
 // phpcs:enable PSR1.Files.SideEffects
 
 use Joomla\CMS\Document\HtmlDocument;
+use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\View\HtmlView as BaseHtmlView;
 use Joomla\CMS\Toolbar\ToolbarHelper;
@@ -82,6 +83,8 @@ class HtmlView extends BaseHtmlView
      */
     protected function addToolbar()
     {
+        Factory::getApplication()->getInput()->set('hidemainmenu', true);
+
         ToolbarHelper::title(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_TITLE'), 'comments');
 
         // Nothing to save until there is a translation to edit.
