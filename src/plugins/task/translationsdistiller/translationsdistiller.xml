@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="task" method="upgrade">
+	<name>plg_task_translationsdistiller</name>
+	<creationDate>2026-07</creationDate>
+	<author>Joomla! Project</author>
+	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<version>0.4.0</version>
+	<description>PLG_TASK_TRANSLATIONSDISTILLER_XML_DESCRIPTION</description>
+	<namespace path="src">Joomla\Plugin\Task\TranslationsDistiller</namespace>
+	<files>
+		<folder plugin="translationsdistiller">services</folder>
+		<folder>src</folder>
+		<folder>forms</folder>
+	</files>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_task_translationsdistiller.ini</language>
+		<language tag="en-GB">language/en-GB/plg_task_translationsdistiller.sys.ini</language>
+	</languages>
+</extension>

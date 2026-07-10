@@ -83,8 +83,11 @@ class RuleTable extends Table
         $date = Factory::getDate()->toSql();
         $user = Factory::getApplication()->getIdentity();
 
+        // A scheduled console run carries no identity; record user id 0 then.
+        $userId = $user !== null ? (int) $user->id : 0;
+
         $this->modified    = $date;
-        $this->modified_by = $user->id;
+        $this->modified_by = $userId;
 
         if (!$this->id) {
             if (!(int) $this->created) {
@@ -92,7 +95,7 @@ class RuleTable extends Table
             }
 
             if (empty($this->created_by)) {
-                $this->created_by = $user->id;
+                $this->created_by = $userId;
             }
         }
 
