@@ -91,7 +91,8 @@ $contentType = (string) $this->state->get('filter.contenttype');
                             <?php $statusLabel = $status !== '' ? Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)) : Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?>
                             <td class="text-center">
                                 <?php if ($editable) : ?>
-                                    <a href="<?php echo Route::_('index.php?option=com_translations&view=translatorfeedback&layout=edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType)); ?>">
+                                    <?php // The edit task checks the draft out before opening the editor, so the link carries the form token. ?>
+                                    <a href="<?php echo Route::_('index.php?option=com_translations&task=translatorfeedback.edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>">
                                         <?php echo $this->escape($statusLabel); ?>
                                     </a>
                                 <?php elseif ($status !== '') : ?>

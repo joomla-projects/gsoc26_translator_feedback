@@ -231,17 +231,17 @@ class TranslatorfeedbackModel extends FormModel
             throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
         }
 
+        // Refuse to overwrite a draft another user has checked out; the editor is never opened for them, but a crafted post must not slip through.
+        if (!$item->editable) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_LOCKED'));
+        }
+
         $properties         = ContentTypesHelper::getProperties($item->content_type);
         $translatableFields = (array) ($properties['translatableFields'] ?? []);
         $translationId      = (int) $item->translation_item['id'];
 
         // Reuse the type's admin model - its save() runs the workflow + versioning for us.
-        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
-        $component = $application->bootComponent((string) ($properties['component'] ?? ''));
-
-        // 'ignore_request' => true: we hand this model our own data, so it must not read state from the current request.
-        /** @var AdminModel $model */
-        $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
+        $model = $this->draftModel($application, $properties);
 
         // Reload the raw row - plain column values, avoiding the computed objects getItem() adds (e.g. tags).
         $row = $this->loadItem($translationId, (string) ($properties['table'] ?? ''));
@@ -307,6 +307,82 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         return $saved;
+    }
+
+    /**
+     * Boot the managing component's admin model for the draft's content type.
+     *
+     * The type's own model is reused so its save/checkout/checkin run the normal
+     * workflow and versioning. 'ignore_request' => true: we drive it with our own
+     * data, so it must not read state from the current request.
+     *
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     * @param   array                    $properties   The content type's properties from the map.
+     *
+     * @return  AdminModel  The managing component's admin model.
+     *
+     * @since   0.4.0
+     */
+    private function draftModel(CMSApplicationInterface $application, array $properties): AdminModel
+    {
+        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
+        $component = $application->bootComponent((string) ($properties['component'] ?? ''));
+
+        /** @var AdminModel $model */
+        $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
+
+        return $model;
+    }
+
+    /**
+     * Check the translation draft out for the current user.
+     *
+     * Delegated to the managing model so the lock lands on the draft's own row. Returns
+     * false when another user already holds it (the caller then blocks and returns to the
+     * queue); a type whose table has no checkout columns simply reports success.
+     *
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  boolean  True when the draft is held by (or free for) the current user.
+     *
+     * @since   0.4.0
+     */
+    public function checkoutDraft(CMSApplicationInterface $application): bool
+    {
+        $item = $this->getItem();
+
+        if ($item->translation_item === null) {
+            return true;
+        }
+
+        $model = $this->draftModel($application, ContentTypesHelper::getProperties($item->content_type));
+
+        return (bool) $model->checkout((int) $item->translation_item['id']);
+    }
+
+    /**
+     * Check the translation draft back in.
+     *
+     * Releases the lock when the editor is closed. The check-in is delegated to the managing
+     * model, which permits it for the user holding the draft or a user with global check-in
+     * rights and refuses it otherwise - the same permission model as core's edit forms.
+     *
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  void
+     *
+     * @since   0.4.0
+     */
+    public function checkinDraft(CMSApplicationInterface $application): void
+    {
+        $item = $this->getItem();
+
+        if ($item->translation_item === null) {
+            return;
+        }
+
+        $model = $this->draftModel($application, ContentTypesHelper::getProperties($item->content_type));
+        $model->checkin((int) $item->translation_item['id']);
     }
 
     /**
@@ -520,7 +596,8 @@ class TranslatorfeedbackModel extends FormModel
      *
      * @return  object  { content_id, content_type, target_language, source_language, source_item,
      *                    translation_item, source_values, source_custom_fields, translation_custom_fields,
-     *                    translatable_fields } - the items may be null.
+     *                    translatable_fields, editable } - the items may be null; editable is false when
+     *                    the draft is checked out by another user.
      *
      * @since   0.2.0
      */
@@ -552,6 +629,11 @@ class TranslatorfeedbackModel extends FormModel
             }
         }
 
+        // A draft another user has checked out is blocked from opening; the row loaded above (SELECT *) carries the lock column.
+        $currentUserId = (int) $this->getCurrentUser()->id;
+        $checkedOut    = $translationItem !== null ? (int) ($translationItem['checked_out'] ?? 0) : 0;
+        $editable      = $checkedOut === 0 || $checkedOut === $currentUserId;
+
         $this->item = (object) [
             'content_id'                => $contentId,
             'content_type'              => $contentType,
@@ -563,6 +645,7 @@ class TranslatorfeedbackModel extends FormModel
             'source_custom_fields'      => $sourceItem !== null ? $this->collectCustomFields($sourceItem, $properties) : [],
             'translation_custom_fields' => $translationItem !== null ? $this->collectCustomFields($translationItem, $properties) : [],
             'translatable_fields'       => $translatableFields,
+            'editable'                  => $editable,
         ];
 
         return $this->item;
