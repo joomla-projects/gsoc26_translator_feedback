@@ -27,7 +27,7 @@ use Joomla\Database\ParameterType;
  * Distiller model: turns translator feedback into draft translation rules.
  *
  * Reads a batch of pending feedback, focuses each correction with a diff, asks the
- * "translation" plugin group to distil rules from it, and writes the results as
+ * "distillation" plugin group to distil rules from it, and writes the results as
  * unpublished (state 0) draft rules for review in the Rules view. All provider-agnostic
  * work lives here; only the LLM call belongs to a plugin, behind the onDistil event.
  *
@@ -273,7 +273,7 @@ class DistillerModel extends BaseDatabaseModel
     }
 
     /**
-     * Ask the "translation" plugin group to distil rule candidates from a batch of corrections.
+     * Ask the "distillation" plugin group to distil rule candidates from a batch of corrections.
      *
      * The first provider that answers wins; an enabled provider may legitimately return no
      * candidates (nothing worth learning), but with no provider at all there is nothing to
@@ -293,7 +293,7 @@ class DistillerModel extends BaseDatabaseModel
     private function requestCandidates(array $corrections, array $existingRules, string $sourceLanguage, string $targetLanguage): array
     {
         $dispatcher = $this->getDispatcher();
-        PluginHelper::importPlugin('translation', null, true, $dispatcher);
+        PluginHelper::importPlugin('distillation', null, true, $dispatcher);
 
         $event = new DistilEvent('onDistil', [
             'corrections'    => $corrections,
@@ -310,7 +310,7 @@ class DistillerModel extends BaseDatabaseModel
             }
         }
 
-        throw new \RuntimeException('No distillation provider is enabled. Enable a translation plugin to distil rules.');
+        throw new \RuntimeException('No distillation provider is enabled. Enable a distillation plugin to distil rules.');
     }
 
     /**
