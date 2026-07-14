@@ -87,6 +87,11 @@ class QueueModel extends ListModel
         // fall back to stored state otherwise.
         $submittedFilter = $input->get('filter', null, 'array');
 
+        // Default the status filter to review on a fresh visit; still clearable.
+        if ($submittedFilter === null && $app->getUserState($this->context . '.filter') === null) {
+            $app->setUserState($this->context . '.filter.status', ['review']);
+        }
+
         $this->setState('filter.status', $this->getMultiFilterState('status', $submittedFilter));
         $this->setState('filter.languages', $this->getMultiFilterState('languages', $submittedFilter));
 
