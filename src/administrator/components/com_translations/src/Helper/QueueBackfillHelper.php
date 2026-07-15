@@ -38,12 +38,22 @@ class QueueBackfillHelper
     private const CONTENT_TYPES = ['com_content.article'];
 
     /**
-     * State stamped on a translation that already exists at install time.
+     * Joomla publish states that decide the stored translation state.
+     *
+     * @var    integer
+     * @since  0.7.0
+     */
+    private const ITEM_PUBLISHED = 1;
+    private const ITEM_TRASHED   = -2;
+
+    /**
+     * Translation states stored for an existing translation.
      *
      * @var    string
      * @since  0.7.0
      */
-    private const BACKFILL_STATE = 'published';
+    private const STATE_PUBLISHED = 'published';
+    private const STATE_REVIEW    = 'review';
 
     /**
      * Seed queue and state rows for every handled content type that already has associations.
@@ -63,18 +73,19 @@ class QueueBackfillHelper
             $properties = ContentTypesHelper::getProperties($contentType);
             $context    = (string) ($properties['context_associations'] ?? '');
             $table      = (string) ($properties['table'] ?? '');
+            $stateField = (string) ($properties['stateField'] ?? '');
 
-            if ($context === '' || $table === '') {
+            if ($context === '' || $table === '' || $stateField === '') {
                 continue;
             }
 
-            $groups = self::readAssociationGroups($db, $context, $table);
+            $groups = self::readAssociationGroups($db, $context, $table, $stateField);
 
             foreach (self::plan($groups, $sourceLanguage) as $plan) {
                 $queueId = self::getOrCreateQueueId($db, $contentType, $plan['sourceId']);
 
-                foreach ($plan['targets'] as $targetLanguage) {
-                    if (self::insertStateIfAbsent($db, $queueId, $targetLanguage)) {
+                foreach ($plan['targets'] as $target) {
+                    if (self::insertStateIfAbsent($db, $queueId, $target['language'], $target['state'])) {
                         $created++;
                     }
                 }
@@ -87,14 +98,15 @@ class QueueBackfillHelper
     /**
      * Decide the queue anchor and target-language state rows for each association group. Pure (no database).
      *
-     * A group is a list of members, each ['id' => int, 'language' => string]. The member in the
-     * source language is the queue anchor; the other members are the translations to record.
-     * Groups with no source-language member, and languages that are not real targets ('*'), are skipped.
+     * A group is a list of members, each ['id' => int, 'language' => string, 'publishState' => int]. The
+     * member in the source language is the queue anchor; the other members are the translations to record,
+     * each carrying the state to store (derived from its publish state). Groups with no source-language
+     * member, languages that are not real targets ('*'), and trashed translations are skipped.
      *
-     * @param   array   $groups          Association groups, each a list of ['id', 'language'] members.
+     * @param   array   $groups          Association groups, each a list of member arrays.
      * @param   string  $sourceLanguage  The source language code.
      *
-     * @return  array  List of ['sourceId' => int, 'targets' => string[]]; targets de-duplicated, source excluded.
+     * @return  array  List of ['sourceId' => int, 'targets' => [['language' => string, 'state' => string], ...]].
      *
      * @since   0.7.0
      */
@@ -121,7 +133,14 @@ class QueueBackfillHelper
                     continue;
                 }
 
-                $targets[$language] = $language;
+                $state = self::translationStateFor((int) ($member['publishState'] ?? 0));
+
+                // A trashed translation is not a usable translation.
+                if ($state === null) {
+                    continue;
+                }
+
+                $targets[$language] = ['language' => $language, 'state' => $state];
             }
 
             if ($sourceId === 0 || $targets === []) {
@@ -135,20 +154,45 @@ class QueueBackfillHelper
     }
 
     /**
-     * Read every association for a context and group its members by the shared key.
+     * Map a translated item's publish state to the state stored for it.
      *
-     * @param   DatabaseInterface  $db       The database driver.
-     * @param   string             $context  The associations context, e.g. 'com_content.item'.
-     * @param   string             $table    The content type's database table.
+     * A published item is a live translation; anything else is an unpublished draft still to be
+     * reviewed. A trashed item is not a usable translation, so it is skipped.
      *
-     * @return  array  List of groups, each a list of ['id' => int, 'language' => string] members.
+     * @param   integer  $publishState  The item's publish state.
+     *
+     * @return  string|null  The translation state to store, or null to skip the item.
      *
      * @since   0.7.0
      */
-    private static function readAssociationGroups(DatabaseInterface $db, string $context, string $table): array
+    private static function translationStateFor(int $publishState): ?string
     {
+        if ($publishState === self::ITEM_TRASHED) {
+            return null;
+        }
+
+        return $publishState === self::ITEM_PUBLISHED ? self::STATE_PUBLISHED : self::STATE_REVIEW;
+    }
+
+    /**
+     * Read every association for a context and group its members by the shared key.
+     *
+     * @param   DatabaseInterface  $db          The database driver.
+     * @param   string             $context     The associations context, e.g. 'com_content.item'.
+     * @param   string             $table       The content type's database table.
+     * @param   string             $stateField  The content type's publish-state column, e.g. 'state'.
+     *
+     * @return  array  List of groups, each a list of ['id' => int, 'language' => string, 'publishState' => int].
+     *
+     * @since   0.7.0
+     */
+    private static function readAssociationGroups(DatabaseInterface $db, string $context, string $table, string $stateField): array
+    {
+        $columns   = $db->quoteName(['association.key', 'item.id', 'item.language']);
+        $columns[] = $db->quoteName('item.' . $stateField, 'publishState');
+
         $query = $db->getQuery(true)
-            ->select($db->quoteName(['association.key', 'item.id', 'item.language']))
+            ->select($columns)
             ->from($db->quoteName('#__associations', 'association'))
             ->join(
                 'INNER',
@@ -162,7 +206,11 @@ class QueueBackfillHelper
         $groups = [];
 
         foreach ($db->loadObjectList() ?: [] as $row) {
-            $groups[$row->key][] = ['id' => (int) $row->id, 'language' => (string) $row->language];
+            $groups[$row->key][] = [
+                'id'           => (int) $row->id,
+                'language'     => (string) $row->language,
+                'publishState' => (int) $row->publishState,
+            ];
         }
 
         return array_values($groups);
@@ -212,12 +260,13 @@ class QueueBackfillHelper
      * @param   DatabaseInterface  $db              The database driver.
      * @param   integer            $queueId         The queue row id.
      * @param   string             $targetLanguage  The target language code.
+     * @param   string             $state           The translation state to store.
      *
      * @return  boolean  True when a row was created, false when one already existed.
      *
      * @since   0.7.0
      */
-    private static function insertStateIfAbsent(DatabaseInterface $db, int $queueId, string $targetLanguage): bool
+    private static function insertStateIfAbsent(DatabaseInterface $db, int $queueId, string $targetLanguage, string $state): bool
     {
         $query = $db->getQuery(true)
             ->select($db->quoteName('id'))
@@ -235,7 +284,7 @@ class QueueBackfillHelper
         $stateRow = (object) [
             'queue_id'          => $queueId,
             'target_language'   => $targetLanguage,
-            'translation_state' => self::BACKFILL_STATE,
+            'translation_state' => $state,
         ];
 
         $db->insertObject('#__translations_queue_states', $stateRow);
