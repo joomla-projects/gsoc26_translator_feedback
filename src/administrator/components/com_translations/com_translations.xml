@@ -8,6 +8,7 @@
     <version>__DEPLOY_VERSION__</version>
     <description>COM_TRANSLATIONS_XML_DESCRIPTION</description>
     <namespace path="src">Joomla\Component\Translations</namespace>
+    <scriptfile>script.php</scriptfile>
     <install>
         <sql>
             <file driver="mysql" charset="utf8">sql/install.mysql.utf8.sql</file>
