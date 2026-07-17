@@ -26,6 +26,9 @@ use Joomla\DI\ServiceProviderInterface;
  * On a first install it reflects translations that already exist through
  * #__associations in the queue, so they are not shown as untranslated.
  *
+ * There exists an InstallerScriptTrait since Joomla 6.0.0, but we are implementing
+ * InstallerScriptInterface, due to Joomla 5 compatibility.
+ *
  * @since  0.7.0
  */
 return new class () implements ServiceProviderInterface {
