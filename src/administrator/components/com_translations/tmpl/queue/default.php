@@ -88,6 +88,8 @@ $contentType = (string) $this->state->get('filter.contenttype');
                             <?php $status = $item->states[$langCode] ?? ''; ?>
                             <?php // Only review/approved cells open the translation feedback view (shown as a link)?>
                             <?php $editable    = \in_array($status, ['review', 'approved'], true); ?>
+                            <?php // An absent state means no translation yet, pending means the source has moved on since; the same trigger serves both. ?>
+                            <?php $translatable = $status === '' || $status === 'pending'; ?>
                             <?php $statusLabel = $status !== '' ? Text::_('COM_TRANSLATIONS_STATUS_' . strtoupper($status)) : Text::_('COM_TRANSLATIONS_STATUS_NONE'); ?>
                             <td class="text-center">
                                 <?php if ($editable) : ?>
@@ -95,15 +97,14 @@ $contentType = (string) $this->state->get('filter.contenttype');
                                     <a href="<?php echo Route::_('index.php?option=com_translations&task=translatorfeedback.edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>">
                                         <?php echo $this->escape($statusLabel); ?>
                                     </a>
-                                <?php elseif ($status !== '') : ?>
-                                    <span class="badge bg-info"><?php echo $this->escape($statusLabel); ?></span>
-                                <?php else : ?>
-                                    <?php // An absent state means ready for translation, so the badge triggers it. ?>
+                                <?php elseif ($translatable) : ?>
                                     <a class="badge bg-secondary text-decoration-none"
                                         href="<?php echo Route::_('index.php?option=com_translations&task=translation.translate&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape(Text::_('COM_TRANSLATIONS_TRANSLATE_NOW')); ?>">
                                         <?php echo $this->escape($statusLabel); ?>
                                     </a>
+                                <?php else : ?>
+                                    <span class="badge bg-info"><?php echo $this->escape($statusLabel); ?></span>
                                 <?php endif; ?>
                             </td>
                         <?php endforeach; ?>

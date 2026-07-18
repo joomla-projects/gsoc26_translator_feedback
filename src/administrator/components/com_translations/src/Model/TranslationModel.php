@@ -851,6 +851,9 @@ class TranslationModel extends BaseDatabaseModel
         $queueId     = $this->getOrCreateQueueId($sourceItemId, $contentType);
         $reviewState = 'review';
 
+        // Record the version translated from, so a later edit of the source invalidates this translation.
+        $versionId = $this->sourceVersionId($sourceItemId, $contentType);
+
         // A state row may already exist from an earlier translation of this language.
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
@@ -870,8 +873,10 @@ class TranslationModel extends BaseDatabaseModel
             $query = $db->getQuery(true)
                 ->update($db->quoteName('#__translations_queue_states'))
                 ->set($db->quoteName('translation_state') . ' = :state')
+                ->set($db->quoteName('source_version_id') . ' = :versionId')
                 ->where($db->quoteName('id') . ' = :stateId')
                 ->bind(':state', $reviewState, ParameterType::STRING)
+                ->bind(':versionId', $versionId, ParameterType::INTEGER)
                 ->bind(':stateId', $stateId, ParameterType::INTEGER);
             $db->setQuery($query);
             $db->execute();
@@ -883,6 +888,7 @@ class TranslationModel extends BaseDatabaseModel
             'queue_id'          => $queueId,
             'target_language'   => $targetLanguage,
             'translation_state' => $reviewState,
+            'source_version_id' => $versionId,
         ];
 
         $db->insertObject('#__translations_queue_states', $stateRow);
@@ -927,5 +933,36 @@ class TranslationModel extends BaseDatabaseModel
         $db->insertObject('#__translations_queue', $queueRow, 'id');
 
         return (int) $queueRow->id;
+    }
+
+    /**
+     * Load the newest version stored for a source item.
+     *
+     * There exists an is_current column flagging the current version in #__history since Joomla 6,
+     * but we read the highest version_id, due to Joomla 5 backward compatibility. An item with no
+     * versions gives 0, which nothing compares as newer than.
+     *
+     * @param   integer  $sourceItemId  The source item id.
+     * @param   string   $contentType   The content type key, e.g. 'com_content.article'.
+     *
+     * @return  integer  The version id, or 0 when the item has none.
+     *
+     * @since   0.7.0
+     */
+    private function sourceVersionId(int $sourceItemId, string $contentType): int
+    {
+        // Versions are keyed by the type alias the item is versioned under, which can differ from our
+        // key (a category is versioned under the extension owning it, com_content.category).
+        $itemId = $contentType . '.' . $sourceItemId;
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('MAX(' . $db->quoteName('version_id') . ')')
+            ->from($db->quoteName('#__history'))
+            ->where($db->quoteName('item_id') . ' = :itemId')
+            ->bind(':itemId', $itemId, ParameterType::STRING);
+        $db->setQuery($query);
+
+        return (int) $db->loadResult();
     }
 }
