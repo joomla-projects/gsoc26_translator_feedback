@@ -23,7 +23,8 @@ use Joomla\CMS\Event\Result\ResultTypeArrayAware;
  * Event dispatched to the "translation" plugin group to translate an item's strings.
  *
  * It carries the strings to translate keyed by field, plus the source and target
- * languages; a provider plugin returns the translated strings through addResult().
+ * languages, and optional distilled rules to steer the translation; a provider plugin
+ * returns the translated strings through addResult().
  *
  * @since  0.4.0
  */
@@ -89,5 +90,20 @@ class TranslateEvent extends AbstractEvent implements ResultAwareInterface
     public function getTargetLanguage(): string
     {
         return $this->arguments['targetLanguage'];
+    }
+
+    /**
+     * Getter for the distilled rules that steer the translation, grouped by rule type.
+     *
+     * Optional context: an empty array when the producer passes no rules, so a provider can
+     * treat rules as absent.
+     *
+     * @return  array
+     *
+     * @since   0.7.0
+     */
+    public function getRules(): array
+    {
+        return $this->arguments['rules'] ?? [];
     }
 }
