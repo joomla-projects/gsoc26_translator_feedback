@@ -95,8 +95,7 @@ class TranslateEvent extends AbstractEvent implements ResultAwareInterface
     /**
      * Getter for the distilled rules that steer the translation, grouped by rule type.
      *
-     * Optional context: an empty array when the producer passes no rules, so a provider can
-     * treat rules as absent.
+     * Returns an empty array when the producer passes no rules.
      *
      * @return  array
      *

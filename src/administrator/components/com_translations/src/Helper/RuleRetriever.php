@@ -20,11 +20,9 @@ use Joomla\Database\ParameterType;
 /**
  * Retrieves the distilled rules relevant to an item, to steer its translation.
  *
- * The rules a translator's corrections produced are stored in #__translations_rules; this
- * finds the ones that apply to an item's source strings so a provider can put them in the
- * prompt. It reads only published rules for the target language (a small, indexed set), then
- * keeps the ones whose term or search keyword appears in the text; style rules apply to the
- * whole language. The result is capped so the prompt stays bounded.
+ * Reads the published rules for the target language, then keeps the ones whose term or search
+ * keyword appears in the item's source strings; style rules apply to the whole language. The
+ * result is capped so the prompt stays bounded.
  *
  * @since  0.7.0
  */
@@ -85,7 +83,7 @@ class RuleRetriever
      * Flatten an item's strings into one plain-text haystack to match rules against.
      *
      * Removes HTML, decodes entities and collapses whitespace, so a term is matched against the
-     * readable text rather than markup. Pure (no database).
+     * readable text rather than markup.
      *
      * @param   array  $sourceStrings  The item's source strings, keyed by field.
      *
@@ -102,13 +100,13 @@ class RuleRetriever
     }
 
     /**
-     * Keep the rules that apply to the text, grouped by type and capped. Pure (no database).
+     * Keep the rules that apply to the text, grouped by type and capped.
      *
      * Style rules apply to the whole language; terminology and preservation rules apply only when
-     * their term or a search keyword appears in the text. Rules arrive most weighted first, so the
-     * caps keep the strongest.
+     * their term or a search keyword appears in the text. Rules arrive ordered by confidence, so
+     * the caps keep the highest-ranked.
      *
-     * @param   array   $rules  The candidate rules, most weighted first.
+     * @param   array   $rules  The candidate rules, ordered by confidence, descending.
      * @param   string  $text   The item's readable text.
      *
      * @return  array  Selected rules keyed by rule type.
@@ -150,7 +148,7 @@ class RuleRetriever
      * Whether a terminology or preservation rule applies to the text.
      *
      * True when the rule's source term, or one of its search keywords, appears in the text as a
-     * whole word. Pure (no database).
+     * whole word.
      *
      * @param   array   $rule  The rule row.
      * @param   string  $text  The item's readable text.
@@ -177,8 +175,7 @@ class RuleRetriever
     /**
      * Whether the needle appears in the text as a whole word or phrase, case-insensitively.
      *
-     * Matches on word boundaries so a term does not match inside a longer word (e.g. "cat" does
-     * not match "category"). Pure (no database).
+     * Matches on word boundaries, so a term does not match inside a longer word.
      *
      * @param   string  $text    The text to search.
      * @param   string  $needle  The word or phrase to find.
@@ -187,7 +184,7 @@ class RuleRetriever
      *
      * @since   0.7.0
      */
-    private static function containsWord(string $text, string $needle): bool
+    public static function containsWord(string $text, string $needle): bool
     {
         $needle = trim((string) preg_replace('/\s+/u', ' ', $needle));
 
@@ -199,7 +196,7 @@ class RuleRetriever
     }
 
     /**
-     * Load every published rule for a language, most weighted first.
+     * Load every published rule for a language, ordered by confidence, descending.
      *
      * @param   DatabaseInterface  $db              The database driver.
      * @param   string             $targetLanguage  The target language code.
@@ -218,8 +215,8 @@ class RuleRetriever
             ->where($db->quoteName('state') . ' = :state')
             ->order(
                 [
-                    $db->quoteName('weight') . ' DESC',
                     $db->quoteName('confidence') . ' DESC',
+                    $db->quoteName('id') . ' DESC',
                 ]
             )
             ->bind(':lang', $targetLanguage, ParameterType::STRING)
