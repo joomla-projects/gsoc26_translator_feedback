@@ -105,10 +105,10 @@ class RuleRetriever
      * Keep the rules that apply to the text, grouped by type and capped. Pure (no database).
      *
      * Style rules apply to the whole language; terminology and preservation rules apply only when
-     * their term or a search keyword appears in the text. Rules arrive most weighted first, so the
-     * caps keep the strongest.
+     * their term or a search keyword appears in the text. Rules arrive ordered by confidence, so
+     * the caps keep the highest-ranked.
      *
-     * @param   array   $rules  The candidate rules, most weighted first.
+     * @param   array   $rules  The candidate rules, ordered by confidence, descending.
      * @param   string  $text   The item's readable text.
      *
      * @return  array  Selected rules keyed by rule type.
@@ -187,7 +187,7 @@ class RuleRetriever
      *
      * @since   0.7.0
      */
-    private static function containsWord(string $text, string $needle): bool
+    public static function containsWord(string $text, string $needle): bool
     {
         $needle = trim((string) preg_replace('/\s+/u', ' ', $needle));
 
@@ -199,7 +199,7 @@ class RuleRetriever
     }
 
     /**
-     * Load every published rule for a language, most weighted first.
+     * Load every published rule for a language, ordered by confidence, descending.
      *
      * @param   DatabaseInterface  $db              The database driver.
      * @param   string             $targetLanguage  The target language code.
@@ -218,8 +218,8 @@ class RuleRetriever
             ->where($db->quoteName('state') . ' = :state')
             ->order(
                 [
-                    $db->quoteName('weight') . ' DESC',
                     $db->quoteName('confidence') . ' DESC',
+                    $db->quoteName('id') . ' DESC',
                 ]
             )
             ->bind(':lang', $targetLanguage, ParameterType::STRING)
