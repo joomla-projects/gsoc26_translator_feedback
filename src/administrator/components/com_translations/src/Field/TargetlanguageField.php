@@ -14,13 +14,12 @@ namespace Joomla\Component\Translations\Administrator\Field;
 \defined('_JEXEC') or die;
 // phpcs:enable PSR1.Files.SideEffects
 
+use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Form\Field\ContentlanguageField;
 
 /**
- * Content language field that lists only the translation TARGET languages
- * ie every installed content language except the source language and the
- * "All" ('*') language. Mirrors QueueModel::getTargetLanguages()
- * so the queue filter columns stay in sync.
+ * Content language field listing only the translation target languages, ie every
+ * installed content language except the configured source language and "All" ('*').
  *
  * @since  0.1.0
  */
@@ -35,7 +34,7 @@ class TargetlanguageField extends ContentlanguageField
     public $type = 'TargetLanguage';
 
     /**
-     * Drop the source language and '*' from the content-language options.
+     * Drop the configured source language and '*' from the content-language options.
      *
      * @return  object[]  The options the field is going to show.
      *
@@ -43,7 +42,8 @@ class TargetlanguageField extends ContentlanguageField
      */
     protected function getOptions()
     {
-        $excluded = ['', '*', 'en-GB']; //  en-GB is hardcoded for now.
+        $sourceLanguage = (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
+        $excluded       = ['', '*', $sourceLanguage];
 
         return array_values(
             array_filter(
