@@ -34,6 +34,8 @@
             label="COM_TRANSLATIONS_RULE_FIELD_SOURCE_TERM_LABEL"
             description="COM_TRANSLATIONS_RULE_FIELD_SOURCE_TERM_DESC"
             maxlength="255"
+            required="true"
+            showon="rule_type:terminology,preservation"
         />
 
         <field
@@ -42,6 +44,8 @@
             label="COM_TRANSLATIONS_RULE_FIELD_TARGET_TERM_LABEL"
             description="COM_TRANSLATIONS_RULE_FIELD_TARGET_TERM_DESC"
             maxlength="255"
+            required="true"
+            showon="rule_type:terminology"
         />
 
         <field
@@ -52,6 +56,7 @@
             required="true"
             rows="6"
             cols="40"
+            showon="rule_type:style"
         />
 
         <field
@@ -60,13 +65,15 @@
             label="COM_TRANSLATIONS_RULE_FIELD_KEYWORDS_LABEL"
             description="COM_TRANSLATIONS_RULE_FIELD_KEYWORDS_DESC"
             maxlength="500"
+            showon="rule_type:terminology,preservation"
         />
     </fieldset>
 
     <fieldset name="publishing">
         <field
             name="target_language"
-            type="contentlanguage"
+            type="targetlanguage"
+            addfieldprefix="Joomla\Component\Translations\Administrator\Field"
             label="COM_TRANSLATIONS_RULE_FIELD_LANGUAGE_LABEL"
             description="COM_TRANSLATIONS_RULE_FIELD_LANGUAGE_DESC"
             required="true"
@@ -89,9 +96,10 @@
             name="source_origin"
             type="list"
             label="COM_TRANSLATIONS_RULE_FIELD_ORIGIN_LABEL"
-            default="distilled"
+            default="manual"
             validate="options"
             >
+            <option value="manual">COM_TRANSLATIONS_RULE_ORIGIN_MANUAL</option>
             <option value="distilled">COM_TRANSLATIONS_RULE_ORIGIN_DISTILLED</option>
             <option value="ini_import">COM_TRANSLATIONS_RULE_ORIGIN_INI_IMPORT</option>
             <option value="wiki_import">COM_TRANSLATIONS_RULE_ORIGIN_WIKI_IMPORT</option>

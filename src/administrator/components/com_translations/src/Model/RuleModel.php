@@ -107,5 +107,15 @@ class RuleModel extends AdminModel
 
             $table->ordering = (int) $db->loadResult() + 1;
         }
+
+        // A human authoring a rule is the strongest signal; default new rules to full confidence.
+        if (empty($table->id) && (float) $table->confidence === 0.0) {
+            $table->confidence = 1.0;
+        }
+
+        // Rule text is shown for style rules only; other types leave the NOT NULL column unsubmitted.
+        if ($table->rule_text === null) {
+            $table->rule_text = '';
+        }
     }
 }

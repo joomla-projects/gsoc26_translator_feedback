@@ -42,6 +42,7 @@
             class="js-select-submit-on-change"
             >
             <option value="">COM_TRANSLATIONS_RULES_FILTER_SELECT_ORIGIN</option>
+            <option value="manual">COM_TRANSLATIONS_RULE_ORIGIN_MANUAL</option>
             <option value="distilled">COM_TRANSLATIONS_RULE_ORIGIN_DISTILLED</option>
             <option value="ini_import">COM_TRANSLATIONS_RULE_ORIGIN_INI_IMPORT</option>
             <option value="wiki_import">COM_TRANSLATIONS_RULE_ORIGIN_WIKI_IMPORT</option>
