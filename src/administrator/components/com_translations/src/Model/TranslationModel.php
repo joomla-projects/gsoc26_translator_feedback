@@ -26,6 +26,7 @@ use Joomla\Component\Fields\Administrator\Model\FieldModel;
 use Joomla\Component\Translations\Administrator\Event\TranslateEvent;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
+use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
@@ -38,23 +39,6 @@ use Joomla\Registry\Registry;
  */
 class TranslationModel extends BaseDatabaseModel
 {
-    /**
-     * Custom-field types whose values are translatable.
-     *
-     * @var    string[]
-     * @since  0.4.0
-     */
-    private const TRANSLATABLE_FIELD_TYPES = ['text', 'textarea', 'editor', 'note'];
-
-    /**
-     * Prefix that namespaces a custom field in the combined strings collection,
-     * so a field never collides with a column name.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const CUSTOM_FIELD_PREFIX = 'com_fields:';
-
     /**
      * Translate a source item into one target language.
      *
@@ -96,8 +80,8 @@ class TranslationModel extends BaseDatabaseModel
             throw new \RuntimeException(\sprintf('Item %d is marked as not to be translated.', $sourceItemId));
         }
 
-        $this->createDraft($sourceItem, $targetLanguage, $contentType, $application, $properties);
-        $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType);
+        $machineDraft = $this->createDraft($sourceItem, $targetLanguage, $contentType, $application, $properties);
+        $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType, $machineDraft);
     }
 
     /**
@@ -273,7 +257,7 @@ class TranslationModel extends BaseDatabaseModel
             $customFields[$field->name] = [
                 'id'           => (int) $field->id,
                 'value'        => $value,
-                'translatable' => \in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true),
+                'translatable' => \in_array($field->type, TranslatableValuesHelper::TRANSLATABLE_FIELD_TYPES, true),
             ];
         }
 
@@ -472,13 +456,13 @@ class TranslationModel extends BaseDatabaseModel
      * @param   CMSApplicationInterface  $application     The application, used to boot the component.
      * @param   array                    $properties      The content type's properties from the map.
      *
-     * @return  void
+     * @return  array  The draft's translatable values as stored, keyed by field.
      *
      * @throws  \RuntimeException  If the draft cannot be saved.
      *
      * @since   0.3.0
      */
-    private function createDraft(array $sourceItem, string $targetLanguage, string $contentType, CMSApplicationInterface $application, array $properties): void
+    private function createDraft(array $sourceItem, string $targetLanguage, string $contentType, CMSApplicationInterface $application, array $properties): array
     {
         // Save through the managing component's model so versioning and the content events run.
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
@@ -501,7 +485,7 @@ class TranslationModel extends BaseDatabaseModel
 
         foreach ($customFields as $name => $customField) {
             if ($customField['translatable']) {
-                $strings[self::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+                $strings[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
             }
         }
 
@@ -519,7 +503,7 @@ class TranslationModel extends BaseDatabaseModel
 
         foreach ($customFields as $name => $customField) {
             $draftCustomFields[$name] = $customField['translatable']
-                ? ($translated[self::CUSTOM_FIELD_PREFIX . $name] ?? $customField['value'])
+                ? ($translated[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] ?? $customField['value'])
                 : $customField['value'];
         }
 
@@ -622,9 +606,11 @@ class TranslationModel extends BaseDatabaseModel
             );
         }
 
+        $draftId = (int) $model->getState($model->getName() . '.id');
+
         // A model without an associationsContext (tags) leaves the link unwritten, so write it here.
         if ($context !== '' && !$modelWritesAssociations) {
-            $associations[$targetLanguage] = (int) $model->getState($model->getName() . '.id');
+            $associations[$targetLanguage] = $draftId;
             $this->writeAssociations($associations, $context);
         }
 
@@ -633,12 +619,23 @@ class TranslationModel extends BaseDatabaseModel
         if (!empty($properties['copyCustomFieldAssignments']) && $customFields !== []) {
             $this->copyDirectCustomFields(
                 (int) $sourceItem['id'],
-                (int) $model->getState($model->getName() . '.id'),
+                $draftId,
                 $customFields,
                 $draftCustomFields,
                 $application
             );
         }
+
+        // Read the draft back rather than reusing what was sent: the managing component can alter
+        // values while saving, and the translator's correction is compared against what is stored.
+        $draftRow     = $this->getSourceItem($draftId, (string) ($properties['table'] ?? ''));
+        $machineDraft = TranslatableValuesHelper::flattenFields($draftRow, $translatableFields);
+
+        foreach (TranslatableValuesHelper::collectCustomFields($draftRow, $properties) as $name => $customField) {
+            $machineDraft[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+        }
+
+        return $machineDraft;
     }
 
     /**
@@ -846,18 +843,22 @@ class TranslationModel extends BaseDatabaseModel
      * @param   integer  $sourceItemId    The source item id.
      * @param   string   $targetLanguage  The target language code.
      * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
+     * @param   array    $machineDraft    The draft's translatable values as stored, keyed by field.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    private function markReadyForReview(int $sourceItemId, string $targetLanguage, string $contentType): void
+    private function markReadyForReview(int $sourceItemId, string $targetLanguage, string $contentType, array $machineDraft): void
     {
         $queueId     = $this->getOrCreateQueueId($sourceItemId, $contentType);
         $reviewState = 'review';
 
         // Record the version translated from, so a later edit of the source invalidates this translation.
         $versionId = $this->sourceVersionId($sourceItemId, $contentType);
+
+        // Keep the translation as produced, to pair against the translator's correction on approval.
+        $machineDraftJson = (string) json_encode($machineDraft);
 
         // A state row may already exist from an earlier translation of this language.
         $db    = $this->getDatabase();
@@ -879,9 +880,11 @@ class TranslationModel extends BaseDatabaseModel
                 ->update($db->quoteName('#__translations_queue_states'))
                 ->set($db->quoteName('translation_state') . ' = :state')
                 ->set($db->quoteName('source_version_id') . ' = :versionId')
+                ->set($db->quoteName('machine_draft') . ' = :machineDraft')
                 ->where($db->quoteName('id') . ' = :stateId')
                 ->bind(':state', $reviewState, ParameterType::STRING)
                 ->bind(':versionId', $versionId, ParameterType::INTEGER)
+                ->bind(':machineDraft', $machineDraftJson, ParameterType::STRING)
                 ->bind(':stateId', $stateId, ParameterType::INTEGER);
             $db->setQuery($query);
             $db->execute();
@@ -894,6 +897,7 @@ class TranslationModel extends BaseDatabaseModel
             'target_language'   => $targetLanguage,
             'translation_state' => $reviewState,
             'source_version_id' => $versionId,
+            'machine_draft'     => $machineDraftJson,
         ];
 
         $db->insertObject('#__translations_queue_states', $stateRow);

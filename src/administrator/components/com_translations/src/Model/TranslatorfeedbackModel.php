@@ -27,6 +27,7 @@ use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\FormModel;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
+use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Event\DispatcherInterface;
 use Joomla\Registry\Registry;
@@ -43,22 +44,6 @@ use Joomla\Registry\Registry;
  */
 class TranslatorfeedbackModel extends FormModel
 {
-    /**
-     * Custom-field types whose values are translatable.
-     *
-     * @var    string[]
-     * @since  0.4.0
-     */
-    private const TRANSLATABLE_FIELD_TYPES = ['text', 'textarea', 'editor', 'note'];
-
-    /**
-     * Prefix that namespaces a custom field in the feedback maps, so it never collides with a column field.
-     *
-     * @var    string
-     * @since  0.4.0
-     */
-    private const CUSTOM_FIELD_PREFIX = 'com_fields:';
-
     /**
      * Cached source + translation pair (see getItem()).
      *
@@ -142,7 +127,7 @@ class TranslatorfeedbackModel extends FormModel
         $fields = [];
 
         foreach (FieldsHelper::getFields($context, $draftItem) as $field) {
-            if (\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
+            if (\in_array($field->type, TranslatableValuesHelper::TRANSLATABLE_FIELD_TYPES, true)) {
                 $fields[] = $field;
             }
         }
@@ -199,7 +184,7 @@ class TranslatorfeedbackModel extends FormModel
             return [];
         }
 
-        $values = $this->flattenFields($item->translation_item, $item->translatable_fields);
+        $values = TranslatableValuesHelper::flattenFields($item->translation_item, $item->translatable_fields);
         $data   = [];
 
         foreach ($values as $field => $value) {
@@ -253,23 +238,23 @@ class TranslatorfeedbackModel extends FormModel
         // Snapshot the translation as it stands now, before the overwrite below replaces it.
         // This is the machine draft (what was produced before this correction); once the row
         // is overwritten these values exist nowhere else, so they must be captured for the feedback pair.
-        $machineDraft        = $this->flattenFields($row, $translatableFields);
-        $machineCustomFields = $this->collectCustomFields($row, $properties);
+        $machineDraft        = TranslatableValuesHelper::flattenFields($row, $translatableFields);
+        $machineCustomFields = TranslatableValuesHelper::collectCustomFields($row, $properties);
 
         // Overwrite each translated field; anything not submitted keeps the row's current value.
         $row = $this->applyTranslation($row, $translatableFields, $data);
 
         // The values now on the row are the human correction - the counterpart to the
         // machine draft captured above. Paired field by field, these become the feedback rows.
-        $humanCorrection = $this->flattenFields($row, $translatableFields);
+        $humanCorrection = TranslatableValuesHelper::flattenFields($row, $translatableFields);
 
         // Custom fields are stored apart from the columns: put the corrected values on the draft for the
         // managing model to persist, and fold both sides into the feedback maps under a namespaced key.
         $submittedCustomFields = (array) ($data['com_fields'] ?? []);
 
         foreach ($machineCustomFields as $name => $customField) {
-            $machineDraft[self::CUSTOM_FIELD_PREFIX . $name]    = $customField['value'];
-            $humanCorrection[self::CUSTOM_FIELD_PREFIX . $name] = (string) ($submittedCustomFields[$name] ?? $customField['value']);
+            $machineDraft[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name]    = $customField['value'];
+            $humanCorrection[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = (string) ($submittedCustomFields[$name] ?? $customField['value']);
         }
 
         if ($submittedCustomFields !== []) {
@@ -443,7 +428,7 @@ class TranslatorfeedbackModel extends FormModel
 
         // The custom-field source values feed the same pairs, under the namespaced key save() used.
         foreach ((array) $item->source_custom_fields as $name => $customField) {
-            $sourceValues[self::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+            $sourceValues[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
         }
 
         foreach ($machineDraft as $field => $machineValue) {
@@ -463,50 +448,6 @@ class TranslatorfeedbackModel extends FormModel
 
             $db->insertObject('#__translations_feedback', $row);
         }
-    }
-
-    /**
-     * Flatten an item's translatable fields into one value map keyed by field.
-     *
-     * Plain columns are read directly; a JSON column's sub-fields are read from inside it
-     * and keyed by their sub-field name (the same keys the form uses). Unlike the producer's
-     * collection, empty values are kept, so the editor shows every field the source has.
-     * The field list comes from the content type map: a plain name is a column, an array
-     * maps a JSON column to its translatable sub-keys.
-     *
-     * @param   array  $row                 The item's column values.
-     * @param   array  $translatableFields  The content type's translatable field list.
-     *
-     * @return  array  The field values keyed by field name.
-     *
-     * @since   0.4.0
-     */
-    private function flattenFields(array $row, array $translatableFields): array
-    {
-        $values = [];
-
-        foreach ($translatableFields as $field) {
-            if (\is_string($field)) {
-                $values[$field] = (string) ($row[$field] ?? '');
-
-                continue;
-            }
-
-            if (!\is_array($field)) {
-                continue;
-            }
-
-            foreach ($field as $jsonColumn => $subKeys) {
-                $registry = new Registry($row[$jsonColumn] ?? '');
-
-                foreach ((array) $subKeys as $subKey) {
-                    $subKey          = (string) $subKey;
-                    $values[$subKey] = (string) $registry->get($subKey, '');
-                }
-            }
-        }
-
-        return $values;
     }
 
     /**
@@ -550,45 +491,6 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         return $row;
-    }
-
-    /**
-     * Gather an item's translatable custom-field values, keyed by field name.
-     *
-     * Read with FieldsHelper directly (the raw stored value, not the display HTML), the same read
-     * the producer uses, and limited to the translatable types so the editor shows only fields a
-     * translator can correct. A content type with no custom-field context returns nothing.
-     *
-     * @param   array  $item        The item's column values.
-     * @param   array  $properties  The content type's properties from the map.
-     *
-     * @return  array  Per field name, ['label' => string, 'value' => string, 'type' => string].
-     *
-     * @since   0.4.0
-     */
-    private function collectCustomFields(array $item, array $properties): array
-    {
-        $context = (string) ($properties['context_custom_fields'] ?? '');
-
-        if ($context === '') {
-            return [];
-        }
-
-        $customFields = [];
-
-        foreach (FieldsHelper::getFields($context, $item) as $field) {
-            if (!\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
-                continue;
-            }
-
-            $customFields[$field->name] = [
-                'label' => (string) $field->label,
-                'value' => (string) $field->rawvalue,
-                'type'  => (string) $field->type,
-            ];
-        }
-
-        return $customFields;
     }
 
     /**
@@ -641,9 +543,9 @@ class TranslatorfeedbackModel extends FormModel
             'source_language'           => $sourceItem !== null ? (string) ($sourceItem['language'] ?? '') : '',
             'source_item'               => $sourceItem,
             'translation_item'          => $translationItem,
-            'source_values'             => $sourceItem !== null ? $this->flattenFields($sourceItem, $translatableFields) : [],
-            'source_custom_fields'      => $sourceItem !== null ? $this->collectCustomFields($sourceItem, $properties) : [],
-            'translation_custom_fields' => $translationItem !== null ? $this->collectCustomFields($translationItem, $properties) : [],
+            'source_values'             => $sourceItem !== null ? TranslatableValuesHelper::flattenFields($sourceItem, $translatableFields) : [],
+            'source_custom_fields'      => $sourceItem !== null ? TranslatableValuesHelper::collectCustomFields($sourceItem, $properties) : [],
+            'translation_custom_fields' => $translationItem !== null ? TranslatableValuesHelper::collectCustomFields($translationItem, $properties) : [],
             'translatable_fields'       => $translatableFields,
             'editable'                  => $editable,
         ];

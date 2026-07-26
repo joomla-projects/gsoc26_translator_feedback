@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS `#__translations_queue_states` (
   `translation_state` varchar(20) NOT NULL DEFAULT 'pending',
   -- The source's #__history version this translation was made from; 0 when none was recorded.
   `source_version_id` int unsigned NOT NULL DEFAULT 0,
+  -- The translation as it was produced, as a JSON field map, to pair against the translator's correction.
+  `machine_draft` mediumtext,
   `modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_queue_lang` (`queue_id`, `target_language`),
