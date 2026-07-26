@@ -23,10 +23,13 @@ use Joomla\CMS\Event\Model\AfterSaveEvent;
 use Joomla\CMS\Event\Model\BeforeDeleteEvent;
 use Joomla\CMS\Event\Model\PrepareDataEvent;
 use Joomla\CMS\Event\Model\PrepareFormEvent;
+use Joomla\CMS\Event\Table\AfterStoreEvent;
 use Joomla\CMS\Extension\ComponentInterface;
+use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\CMS\Table\ContentHistory;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Database\DatabaseAwareInterface;
 use Joomla\Database\DatabaseAwareTrait;
@@ -35,8 +38,9 @@ use Joomla\Event\SubscriberInterface;
 
 /**
  * Content plugin for the Translations component. Adds the "no need for translation"
- * toggle to the article form, and cascades a source item's trash or delete to its
- * translated items and the queue rows that track them, for every managed content type.
+ * toggle to the article form, cascades a source item's trash or delete to its translated
+ * items and the queue rows that track them, for every managed content type, and sends a
+ * source item's translations back to pending once a new version of it is stored.
  *
  * @since  0.3.0
  */
@@ -103,6 +107,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             'onCategoryChangeState' => 'onCategoryChangeState',
             'onContentBeforeDelete' => 'onContentBeforeDelete',
             'onContentAfterDelete'  => 'onContentAfterDelete',
+            'onTableAfterStore'     => 'onTableAfterStore',
         ];
     }
 
@@ -202,6 +207,54 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         $doNotTranslate = (int) (\is_array($attribs) ? ($attribs[self::FIELD] ?? 0) : 0);
 
         $this->storeFlag((int) $article->id, $doNotTranslate);
+    }
+
+    /**
+     * Invalidate a source item's translations once a new version of it is stored.
+     *
+     * A version is stored only when the content changed, so a stored row is the change signal. The
+     * row is written after onContentAfterSave, so the new version is not readable from the save event.
+     *
+     * @param   AfterStoreEvent  $event  The event.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    public function onTableAfterStore(AfterStoreEvent $event): void
+    {
+        $table = $event->getArgument('subject');
+
+        if (!$table instanceof ContentHistory || !$event->getArgument('result')) {
+            return;
+        }
+
+        // A version row is keyed as "<type alias>.<id>", and an article is versioned under our key for it.
+        $parts       = explode('.', (string) $table->item_id);
+        $sourceId    = (int) array_pop($parts);
+        $contentType = implode('.', $parts);
+
+        if ($contentType !== self::CONTENT_TYPE || $sourceId === 0) {
+            return;
+        }
+
+        // The queue only holds source items, so a stored version of a translation finds nothing.
+        $queueId = $this->queueId($sourceId, $contentType);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        // Never let a failure here break the save this is running inside.
+        try {
+            $this->invalidateTranslations($queueId, (int) $table->version_id);
+        } catch (\Throwable $e) {
+            Log::add(
+                \sprintf('Could not invalidate translations of %s %d: %s', $contentType, $sourceId, $e->getMessage()),
+                Log::WARNING,
+                'translations'
+            );
+        }
     }
 
     /**
@@ -600,6 +653,39 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             ->where($db->quoteName('target_language') . ' = :language')
             ->bind(':queueId', $queueId, ParameterType::INTEGER)
             ->bind(':language', $language, ParameterType::STRING);
+        $db->setQuery($query);
+        $db->execute();
+    }
+
+    /**
+     * Mark a source item's translations as needing re-translation.
+     *
+     * Only translations made from an older version go back to pending. The version is compared as
+     * newer rather than different, because a version row is also stored without a new version being
+     * added: for a version note, and for the keep forever toggle, which carries the toggled row's id.
+     *
+     * @param   integer  $queueId    The source item's queue row id.
+     * @param   integer  $versionId  The version just stored for the source.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    private function invalidateTranslations(int $queueId, int $versionId): void
+    {
+        $pendingState = 'pending';
+        $staleStates  = ['review', 'approved'];
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue_states'))
+            ->set($db->quoteName('translation_state') . ' = :pending')
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('source_version_id') . ' < :versionId')
+            ->whereIn($db->quoteName('translation_state'), $staleStates, ParameterType::STRING)
+            ->bind(':pending', $pendingState, ParameterType::STRING)
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':versionId', $versionId, ParameterType::INTEGER);
         $db->setQuery($query);
         $db->execute();
     }
