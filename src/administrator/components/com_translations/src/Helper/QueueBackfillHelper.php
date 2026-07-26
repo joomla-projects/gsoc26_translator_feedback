@@ -30,12 +30,17 @@ use Joomla\Database\ParameterType;
 class QueueBackfillHelper
 {
     /**
-     * Content types seeded on install. Articles first; other associable types follow later.
+     * Content types seeded on install from their existing associations.
      *
      * @var    string[]
      * @since  0.7.0
      */
-    private const CONTENT_TYPES = ['com_content.article'];
+    private const CONTENT_TYPES = [
+        'com_content.article',
+        'com_categories.category',
+        'com_tags.tag',
+        'com_menus.item',
+    ];
 
     /**
      * Joomla publish states that decide the stored translation state.
@@ -79,7 +84,7 @@ class QueueBackfillHelper
                 continue;
             }
 
-            $groups = self::readAssociationGroups($db, $context, $table, $stateField);
+            $groups = self::readAssociationGroups($db, $context, $table, $stateField, (string) ($properties['limitToExtension'] ?? ''));
 
             foreach (self::plan($groups, $sourceLanguage) as $plan) {
                 $queueId = self::getOrCreateQueueId($db, $contentType, $plan['sourceId']);
@@ -181,12 +186,13 @@ class QueueBackfillHelper
      * @param   string             $context     The associations context, e.g. 'com_content.item'.
      * @param   string             $table       The content type's database table.
      * @param   string             $stateField  The content type's publish-state column, e.g. 'state'.
+     * @param   string             $extension   The extension a shared table is scoped to, or '' for none.
      *
      * @return  array  List of groups, each a list of ['id' => int, 'language' => string, 'publishState' => int].
      *
      * @since   0.7.0
      */
-    private static function readAssociationGroups(DatabaseInterface $db, string $context, string $table, string $stateField): array
+    private static function readAssociationGroups(DatabaseInterface $db, string $context, string $table, string $stateField, string $extension = ''): array
     {
         $columns   = $db->quoteName(['association.key', 'item.id', 'item.language']);
         $columns[] = $db->quoteName('item.' . $stateField, 'publishState');
@@ -201,6 +207,13 @@ class QueueBackfillHelper
             )
             ->where($db->quoteName('association.context') . ' = :context')
             ->bind(':context', $context, ParameterType::STRING);
+
+        // A shared table (categories span several extensions) is scoped to the component's own items.
+        if ($extension !== '') {
+            $query->where($db->quoteName('item.extension') . ' = :extension')
+                ->bind(':extension', $extension, ParameterType::STRING);
+        }
+
         $db->setQuery($query);
 
         $groups = [];
