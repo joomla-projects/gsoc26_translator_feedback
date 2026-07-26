@@ -119,8 +119,32 @@ class RuleTable extends Table
             throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TYPE'));
         }
 
-        if (trim($this->rule_text) === '') {
-            throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TEXT'));
+        // Requiredness is per rule type; showon hides the irrelevant fields but does not validate them.
+        switch ($this->rule_type) {
+            case 'terminology':
+                if (trim((string) $this->source_term) === '') {
+                    throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_SOURCE_TERM'));
+                }
+
+                if (trim((string) $this->target_term) === '') {
+                    throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TARGET_TERM'));
+                }
+
+                break;
+
+            case 'preservation':
+                if (trim((string) $this->source_term) === '') {
+                    throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_SOURCE_TERM'));
+                }
+
+                break;
+
+            case 'style':
+                if (trim((string) $this->rule_text) === '') {
+                    throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TEXT'));
+                }
+
+                break;
         }
 
         // Keep the confidence inside the stored decimal(3,2) range.
