@@ -328,8 +328,9 @@ class TranslatorfeedbackModel extends FormModel
             return false;
         }
 
-        $this->captureFeedback();
+        // Publish first, so a refusal leaves no feedback behind for a retry to record twice.
         $this->publishDraft($application);
+        $this->captureFeedback();
         $this->setTranslationState(self::STATE_PUBLISHED);
 
         return true;
