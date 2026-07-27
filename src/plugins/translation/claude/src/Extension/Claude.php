@@ -131,6 +131,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
             $event->getSourceStrings(),
             $event->getSourceLanguage(),
             $event->getTargetLanguage(),
+            $event->getRules(),
             $apiKey
         );
 
@@ -150,6 +151,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      * @param   array   $strings         The source strings keyed by field.
      * @param   string  $sourceLanguage  The source language code.
      * @param   string  $targetLanguage  The target language code.
+     * @param   array   $rules           The distilled rules to steer the translation, grouped by rule type.
      * @param   string  $apiKey          The Anthropic API key.
      *
      * @return  array  The translated strings keyed by field.
@@ -158,12 +160,12 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      *
      * @since   0.4.0
      */
-    private function requestTranslation(array $strings, string $sourceLanguage, string $targetLanguage, string $apiKey): array
+    private function requestTranslation(array $strings, string $sourceLanguage, string $targetLanguage, array $rules, string $apiKey): array
     {
         $payload = [
             'model'         => (string) $this->params->get('model', 'claude-sonnet-5'),
             'max_tokens'    => self::MAX_TOKENS,
-            'system'        => $this->systemPrompt($sourceLanguage, $targetLanguage),
+            'system'        => $this->systemPrompt($sourceLanguage, $targetLanguage, $rules),
             'messages'      => [
                 ['role' => 'user', 'content' => json_encode($strings, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)],
             ],
@@ -235,20 +237,99 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      *
      * @param   string  $sourceLanguage  The source language code.
      * @param   string  $targetLanguage  The target language code.
+     * @param   array   $rules           The distilled rules to steer the translation, grouped by rule type.
      *
      * @return  string
      *
      * @since   0.4.0
      */
-    private function systemPrompt(string $sourceLanguage, string $targetLanguage): string
+    private function systemPrompt(string $sourceLanguage, string $targetLanguage, array $rules): string
     {
-        return \sprintf(
+        $prompt = \sprintf(
             'You are a professional translator. You receive a JSON object whose values are strings to translate from'
             . ' %s to %s. Translate only the human-readable text in each value; keep every key unchanged, and preserve'
             . ' HTML tags, placeholders and entities exactly. Respond with only the translated JSON object and nothing else.',
             $sourceLanguage,
             $targetLanguage
         );
+
+        $guidance = $this->ruleGuidance($rules);
+
+        return $guidance === '' ? $prompt : $prompt . "\n\n" . $guidance;
+    }
+
+    /**
+     * Build the guidance from the distilled rules, or an empty string when there are none.
+     *
+     * The rules come from earlier human corrections, given as soft guidance so the model still
+     * produces natural grammar and agreement: a terminology glossary, style notes, and terms to
+     * leave untranslated.
+     *
+     * @param   array  $rules  The distilled rules, grouped by rule type.
+     *
+     * @return  string
+     *
+     * @since   0.7.0
+     */
+    private function ruleGuidance(array $rules): string
+    {
+        $sections = [];
+
+        $terminology = [];
+
+        foreach ($rules['terminology'] ?? [] as $rule) {
+            $source = trim((string) ($rule['source_term'] ?? ''));
+            $target = trim((string) ($rule['target_term'] ?? ''));
+            $text   = trim((string) ($rule['rule_text'] ?? ''));
+
+            if ($source !== '' && $target !== '') {
+                $terminology[] = \sprintf('- "%s" -> "%s"', $source, $target);
+            } elseif ($text !== '') {
+                $terminology[] = '- ' . $text;
+            }
+        }
+
+        if ($terminology !== []) {
+            $sections[] = "TERMINOLOGY (translate these terms this way):\n" . implode("\n", $terminology);
+        }
+
+        $style = [];
+
+        foreach ($rules['style'] ?? [] as $rule) {
+            $text = trim((string) ($rule['rule_text'] ?? ''));
+
+            if ($text !== '') {
+                $style[] = '- ' . $text;
+            }
+        }
+
+        if ($style !== []) {
+            $sections[] = "STYLE:\n" . implode("\n", $style);
+        }
+
+        $preservation = [];
+
+        foreach ($rules['preservation'] ?? [] as $rule) {
+            $term = trim((string) ($rule['source_term'] ?? ''));
+            $text = trim((string) ($rule['rule_text'] ?? ''));
+
+            if ($term !== '') {
+                $preservation[] = '- ' . $term;
+            } elseif ($text !== '') {
+                $preservation[] = '- ' . $text;
+            }
+        }
+
+        if ($preservation !== []) {
+            $sections[] = "PRESERVE (keep these unchanged):\n" . implode("\n", $preservation);
+        }
+
+        if ($sections === []) {
+            return '';
+        }
+
+        return 'Apply these conventions from earlier corrections where they fit the meaning; keep natural grammar'
+            . " and agreement in the target language.\n\n" . implode("\n\n", $sections);
     }
 
     /**

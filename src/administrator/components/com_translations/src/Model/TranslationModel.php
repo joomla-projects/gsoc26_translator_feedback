@@ -25,6 +25,7 @@ use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Fields\Administrator\Model\FieldModel;
 use Joomla\Component\Translations\Administrator\Event\TranslateEvent;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
+use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
@@ -389,10 +390,14 @@ class TranslationModel extends BaseDatabaseModel
         $dispatcher = $this->getDispatcher();
         PluginHelper::importPlugin('translation', null, true, $dispatcher);
 
+        // Distilled rules relevant to the item, so a provider can steer the translation.
+        $rules = RuleRetriever::retrieve($this->getDatabase(), $strings, $targetLanguage);
+
         $event = new TranslateEvent('onTranslate', [
             'sourceStrings'  => $strings,
             'sourceLanguage' => $sourceLanguage,
             'targetLanguage' => $targetLanguage,
+            'rules'          => $rules,
         ]);
         $dispatcher->dispatch('onTranslate', $event);
 
