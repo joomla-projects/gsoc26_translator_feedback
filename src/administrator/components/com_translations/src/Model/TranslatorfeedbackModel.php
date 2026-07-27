@@ -584,9 +584,10 @@ class TranslatorfeedbackModel extends FormModel
      *
      * Each row pairs like with like - the source text, the machine draft and the human
      * correction for the same field - so the distiller later has clean, coherent pairs.
-     * A field whose correction matches the machine draft is skipped (no change, nothing to
-     * learn), the same principle Joomla versioning uses. status/created/context_tags/diff_data
-     * fall back to their table defaults; diff_data is filled later by the diff feature.
+     * A field whose correction matches the machine draft, apart from the whitespace around it,
+     * is skipped (no change, nothing to learn), the same principle Joomla versioning uses.
+     * status/created/context_tags/diff_data fall back to their table defaults; diff_data is
+     * filled later by the diff feature.
      *
      * @param   integer  $queueId          The queue row this feedback belongs to.
      * @param   array    $machineDraft     Pre-edit field values keyed by field.
@@ -611,7 +612,8 @@ class TranslatorfeedbackModel extends FormModel
 
         foreach ($machineDraft as $field => $machineValue) {
             // Only changed fields are worth learning from - an untouched field is not a correction.
-            if (($humanCorrection[$field] ?? '') === $machineValue) {
+            // An editor field returns its content without the whitespace around it, which is not a correction either.
+            if (trim((string) ($humanCorrection[$field] ?? '')) === trim((string) $machineValue)) {
                 continue;
             }
 
