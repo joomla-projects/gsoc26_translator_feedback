@@ -114,14 +114,18 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
 
         <?php // The administrator carries these actions in its toolbar, which the site does not render. ?>
         <?php if ($this->isSite && $hasTranslation) : ?>
-            <button type="button" class="btn btn-primary" data-submit-task="translatorfeedback.save">
-                <span class="icon-check" aria-hidden="true"></span>
-                <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE'); ?>
-            </button>
-            <button type="button" class="btn btn-danger" data-submit-task="translatorfeedback.cancel">
-                <span class="icon-times" aria-hidden="true"></span>
-                <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_CLOSE'); ?>
-            </button>
+            <joomla-toolbar-button task="translatorfeedback.save" form="adminForm" form-validation>
+                <button type="button" class="btn btn-primary">
+                    <span class="icon-check" aria-hidden="true"></span>
+                    <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE'); ?>
+                </button>
+            </joomla-toolbar-button>
+            <joomla-toolbar-button task="translatorfeedback.cancel" form="adminForm">
+                <button type="button" class="btn btn-danger">
+                    <span class="icon-times" aria-hidden="true"></span>
+                    <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_CLOSE'); ?>
+                </button>
+            </joomla-toolbar-button>
         <?php endif; ?>
     </div>
 

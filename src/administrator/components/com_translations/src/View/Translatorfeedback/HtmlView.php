@@ -80,16 +80,9 @@ class HtmlView extends BaseHtmlView
             ->useScript('form.validate')
             ->registerAndUseStyle('com_translations.translatorfeedback', 'com_translations/translatorfeedback.css');
 
-        // Only the administrator renders a toolbar, so in the site the buttons are part of the
-        // form and this script submits their task.
+        // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
         if ($this->isSite) {
-            $webAssetManager->registerAndUseScript(
-                'com_translations.translatorfeedback',
-                'com_translations/translatorfeedback.js',
-                [],
-                ['type' => 'module'],
-                ['core']
-            );
+            $webAssetManager->useScript('webcomponent.toolbar-button');
         }
 
         $this->addToolbar();

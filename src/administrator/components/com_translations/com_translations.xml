@@ -23,7 +23,6 @@
     </uninstall>
     <media folder="media/com_translations" destination="com_translations">
         <folder>css</folder>
-        <folder>js</folder>
     </media>
     <files folder="components/com_translations">
         <folder>src</folder>
