@@ -53,6 +53,14 @@ class HtmlView extends BaseHtmlView
     public $state;
 
     /**
+     * Whether the view is rendered in the site, where there is no toolbar to carry the actions.
+     *
+     * @var    boolean
+     * @since  0.7.0
+     */
+    public $isSite = false;
+
+    /**
      * Display the view.
      *
      * @param   string|null  $tpl  The name of the template file to parse.
@@ -70,10 +78,17 @@ class HtmlView extends BaseHtmlView
         $this->item  = $model->getItem();
         $this->state = $model->getState();
 
-        // The editing form needs the validator so the Save toolbar button can submit, plus keepalive.
-        $this->getDocument()->getWebAssetManager()
-            ->useScript('keepalive')
+        $this->isSite = Factory::getApplication()->isClient('site');
+
+        // The editing form needs the validator so the Save button can submit, plus keepalive.
+        $webAssetManager = $this->getDocument()->getWebAssetManager();
+        $webAssetManager->useScript('keepalive')
             ->useScript('form.validate');
+
+        // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
+        if ($this->isSite) {
+            $webAssetManager->useScript('webcomponent.toolbar-button');
+        }
 
         $this->addToolbar();
 
