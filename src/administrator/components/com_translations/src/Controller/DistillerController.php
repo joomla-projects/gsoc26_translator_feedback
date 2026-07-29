@@ -60,4 +60,23 @@ class DistillerController extends BaseController
 
         $this->setRedirect($rulesUrl);
     }
+
+    /**
+     * Proxy for getModel.
+     *
+     * The prefix is set because a model is otherwise looked for under the name of the running
+     * application, and the models all live in the administrator.
+     *
+     * @param   string  $name    The model name. Optional.
+     * @param   string  $prefix  The class prefix. Optional.
+     * @param   array   $config  Configuration array for the model. Optional.
+     *
+     * @return  \Joomla\CMS\MVC\Model\BaseDatabaseModel  The model.
+     *
+     * @since   0.7.0
+     */
+    public function getModel($name = 'Distiller', $prefix = 'Administrator', $config = [])
+    {
+        return parent::getModel($name, $prefix, $config);
+    }
 }
