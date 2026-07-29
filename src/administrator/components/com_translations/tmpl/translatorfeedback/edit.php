@@ -50,6 +50,12 @@ $fieldRow = function ($field, $sourceValue, $input, $fill = false) use ($origina
     $type  = strtolower((string) $field->getAttribute('type'));
     $label = Text::_((string) $field->getAttribute('label'));
 
+    // Joomla adds the required marker only when it renders the label itself. This view takes
+    // only the input and builds its own label.
+    if ($field->required) {
+        $label .= '<span class="star" aria-hidden="true">&#160;*</span>';
+    }
+
     if ($type === 'editor') {
         ?>
         <div class="mb-4">
