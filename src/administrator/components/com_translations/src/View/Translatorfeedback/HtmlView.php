@@ -16,6 +16,7 @@ namespace Joomla\Component\Translations\Administrator\View\Translatorfeedback;
 
 use Joomla\CMS\Document\HtmlDocument;
 use Joomla\CMS\Factory;
+use Joomla\CMS\Helper\ContentHelper;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\View\HtmlView as BaseHtmlView;
 use Joomla\CMS\Toolbar\ToolbarHelper;
@@ -105,7 +106,19 @@ class HtmlView extends BaseHtmlView
             return;
         }
 
-        $toolbar->apply('translatorfeedback.save', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE');
+        $toolbar->apply('translatorfeedback.save');
+        $toolbar->save('translatorfeedback.save2close');
+
+        // Approval is the translator's signal that the translation is finished, so it is offered
+        // to anyone who may edit; publishing it is a separate permission.
+        $toolbar->standardButton('approve', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE', 'translatorfeedback.approve')
+            ->icon('icon-check');
+
+        if (ContentHelper::getActions('com_translations')->get('core.edit.state')) {
+            $toolbar->standardButton('publish', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE_PUBLISH', 'translatorfeedback.approveAndPublish')
+                ->icon('icon-publish');
+        }
+
         $toolbar->cancel('translatorfeedback.cancel', 'JTOOLBAR_CLOSE');
     }
 }

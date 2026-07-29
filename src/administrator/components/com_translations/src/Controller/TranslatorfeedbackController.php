@@ -76,6 +76,58 @@ class TranslatorfeedbackController extends BaseController
      */
     public function save()
     {
+        $this->write('save', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_SUCCESS', false);
+    }
+
+    /**
+     * Save the edited translation and leave the translation feedback view.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    public function save2close()
+    {
+        $this->write('save', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_SUCCESS', true);
+    }
+
+    /**
+     * Approve the reviewed translation and leave the translation feedback view.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    public function approve()
+    {
+        $this->write('approve', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE_SUCCESS', true);
+    }
+
+    /**
+     * Approve and publish the reviewed translation, then leave the translation feedback view.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    public function approveAndPublish()
+    {
+        $this->write('approveAndPublish', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE_PUBLISH_SUCCESS', true);
+    }
+
+    /**
+     * Run one of the model's write actions on the submitted translation.
+     *
+     * @param   string   $action          The model method to run: save, approve or approveAndPublish.
+     * @param   string   $successMessage  The language key to enqueue when the action succeeds.
+     * @param   boolean  $close           Whether to release the draft and return to the queue.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    private function write(string $action, string $successMessage, bool $close): void
+    {
         $this->checkToken();
 
         $app            = $this->app;
@@ -85,6 +137,7 @@ class TranslatorfeedbackController extends BaseController
 
         // Editor fields carry HTML, read raw so the markup is preserved (admin only screen).
         $form = $this->input->post->get('jform', [], 'raw');
+        $form = \is_array($form) ? $form : [];
 
         /** @var \Joomla\Component\Translations\Administrator\Model\TranslatorfeedbackModel $model */
         $model = $this->getModel('Translatorfeedback');
@@ -92,20 +145,35 @@ class TranslatorfeedbackController extends BaseController
         $error = null;
 
         try {
-            $saved = $model->save(\is_array($form) ? $form : [], $app);
+            $saved = match ($action) {
+                'approve'           => $model->approve($form, $app),
+                'approveAndPublish' => $model->approveAndPublish($form, $app),
+                default             => $model->save($form, $app),
+            };
         } catch (\Throwable $e) {
             $saved = false;
             $error = $e->getMessage();
         }
 
-        if ($saved) {
-            $app->enqueueMessage(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_SUCCESS'), 'message');
-        } else {
+        if (!$saved) {
             $app->enqueueMessage($error ?: Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_ERROR'), 'error');
+
+            // Staying in the editor keeps the draft checked out, so the translator can retry.
+            $this->setRedirect(Route::_($this->editUrl($contentId, $targetLanguage, $contentType), false));
+
+            return;
         }
 
-        // Save keeps the editor open (apply), so the draft stays checked out for the same user.
-        $this->setRedirect(Route::_($this->editUrl($contentId, $targetLanguage, $contentType), false));
+        $app->enqueueMessage(Text::_($successMessage), 'message');
+
+        if (!$close) {
+            $this->setRedirect(Route::_($this->editUrl($contentId, $targetLanguage, $contentType), false));
+
+            return;
+        }
+
+        $model->checkinDraft($app);
+        $this->setRedirect(Route::_('index.php?option=com_translations&view=queue', false));
     }
 
     /**

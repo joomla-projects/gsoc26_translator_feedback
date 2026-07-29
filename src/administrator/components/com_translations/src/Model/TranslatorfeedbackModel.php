@@ -27,6 +27,7 @@ use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\FormModel;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
+use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Event\DispatcherInterface;
 use Joomla\Registry\Registry;
@@ -44,20 +45,28 @@ use Joomla\Registry\Registry;
 class TranslatorfeedbackModel extends FormModel
 {
     /**
-     * Custom-field types whose values are translatable.
-     *
-     * @var    string[]
-     * @since  0.4.0
-     */
-    private const TRANSLATABLE_FIELD_TYPES = ['text', 'textarea', 'editor', 'note'];
-
-    /**
-     * Prefix that namespaces a custom field in the feedback maps, so it never collides with a column field.
+     * The state of a translation waiting for the translator.
      *
      * @var    string
-     * @since  0.4.0
+     * @since  0.7.0
      */
-    private const CUSTOM_FIELD_PREFIX = 'com_fields:';
+    private const STATE_REVIEW = 'review';
+
+    /**
+     * The state of a translation the translator has finished.
+     *
+     * @var    string
+     * @since  0.7.0
+     */
+    private const STATE_APPROVED = 'approved';
+
+    /**
+     * The state of a translation that is live.
+     *
+     * @var    string
+     * @since  0.7.0
+     */
+    private const STATE_PUBLISHED = 'published';
 
     /**
      * Cached source + translation pair (see getItem()).
@@ -142,7 +151,7 @@ class TranslatorfeedbackModel extends FormModel
         $fields = [];
 
         foreach (FieldsHelper::getFields($context, $draftItem) as $field) {
-            if (\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
+            if (\in_array($field->type, TranslatableValuesHelper::TRANSLATABLE_FIELD_TYPES, true)) {
                 $fields[] = $field;
             }
         }
@@ -199,7 +208,7 @@ class TranslatorfeedbackModel extends FormModel
             return [];
         }
 
-        $values = $this->flattenFields($item->translation_item, $item->translatable_fields);
+        $values = TranslatableValuesHelper::flattenFields($item->translation_item, $item->translatable_fields);
         $data   = [];
 
         foreach ($values as $field => $value) {
@@ -214,7 +223,9 @@ class TranslatorfeedbackModel extends FormModel
      *
      * The write is delegated to the type's managing component so the normal workflow
      * and versioning run; only the translatable fields are overwritten on the existing
-     * draft. The translation is resolved (via associations) by getItem().
+     * draft. The translation is resolved (via associations) by getItem(). Saving is a
+     * checkpoint the translator can return to, so it records no feedback; the corrections
+     * are paired against the machine draft on approval.
      *
      * @param   array                    $data         Submitted form values, keyed translation_<field> plus a com_fields array.
      * @param   CMSApplicationInterface  $application  The application, used to boot the component.
@@ -250,27 +261,11 @@ class TranslatorfeedbackModel extends FormModel
             throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_NO_TRANSLATION'));
         }
 
-        // Snapshot the translation as it stands now, before the overwrite below replaces it.
-        // This is the machine draft (what was produced before this correction); once the row
-        // is overwritten these values exist nowhere else, so they must be captured for the feedback pair.
-        $machineDraft        = $this->flattenFields($row, $translatableFields);
-        $machineCustomFields = $this->collectCustomFields($row, $properties);
-
         // Overwrite each translated field; anything not submitted keeps the row's current value.
         $row = $this->applyTranslation($row, $translatableFields, $data);
 
-        // The values now on the row are the human correction - the counterpart to the
-        // machine draft captured above. Paired field by field, these become the feedback rows.
-        $humanCorrection = $this->flattenFields($row, $translatableFields);
-
-        // Custom fields are stored apart from the columns: put the corrected values on the draft for the
-        // managing model to persist, and fold both sides into the feedback maps under a namespaced key.
+        // Custom fields are stored apart from the columns, so hand them to the managing model separately.
         $submittedCustomFields = (array) ($data['com_fields'] ?? []);
-
-        foreach ($machineCustomFields as $name => $customField) {
-            $machineDraft[self::CUSTOM_FIELD_PREFIX . $name]    = $customField['value'];
-            $humanCorrection[self::CUSTOM_FIELD_PREFIX . $name] = (string) ($submittedCustomFields[$name] ?? $customField['value']);
-        }
 
         if ($submittedCustomFields !== []) {
             $row['com_fields'] = $submittedCustomFields;
@@ -286,27 +281,196 @@ class TranslatorfeedbackModel extends FormModel
                 : $introtext;
         }
 
-        $saved = (bool) $model->save($row);
+        return (bool) $model->save($row);
+    }
 
-        // Record the correction as feedback - but only once the save actually persisted,
-        // and only when there is a queue row to anchor it to.
-        if ($saved) {
-            $queueId = $this->getQueueId((int) $item->content_id, $item->content_type);
-
-            if ($queueId !== null) {
-                $this->recordFeedback($queueId, $machineDraft, $humanCorrection);
-            } else {
-                // The translation feedback view is only reachable from a queue row, so a missing one is unexpected.
-                // Log it rather than failing the save, since feedback has nothing to anchor to.
-                Log::add(
-                    sprintf('No queue row for content id %d; translation saved but feedback was not recorded.', (int) $item->content_id),
-                    Log::WARNING,
-                    'translations'
-                );
-            }
+    /**
+     * Save the translation and mark it as approved.
+     *
+     * Approval is the translator's signal that the translation is finished: the corrections
+     * are paired against the machine draft as feedback, and the item is left unpublished for
+     * whoever publishes it.
+     *
+     * @param   array                    $data         Submitted form values, keyed translation_<field> plus a com_fields array.
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  boolean  True on success.
+     *
+     * @since   0.7.0
+     */
+    public function approve(array $data, CMSApplicationInterface $application): bool
+    {
+        if (!$this->save($data, $application)) {
+            return false;
         }
 
-        return $saved;
+        $this->captureFeedback();
+        $this->setTranslationState(self::STATE_APPROVED);
+
+        return true;
+    }
+
+    /**
+     * Save the translation, mark it as approved and publish it.
+     *
+     * @param   array                    $data         Submitted form values, keyed translation_<field> plus a com_fields array.
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  boolean  True on success.
+     *
+     * @throws  \RuntimeException  If the managing component refuses to publish the draft.
+     *
+     * @since   0.7.0
+     */
+    public function approveAndPublish(array $data, CMSApplicationInterface $application): bool
+    {
+        if (!$this->save($data, $application)) {
+            return false;
+        }
+
+        // Publish first, so a refusal leaves no feedback behind for a retry to record twice.
+        $this->publishDraft($application);
+        $this->captureFeedback();
+        $this->setTranslationState(self::STATE_PUBLISHED);
+
+        return true;
+    }
+
+    /**
+     * Store the translator's corrections as feedback, one preference pair per changed field.
+     *
+     * The machine draft recorded when the translation was produced is paired against the draft
+     * as it now stands. Only a translation still in review carries corrections, so approving and
+     * then publishing does not pair them a second time; a translation the install backfill
+     * restored has no recorded machine draft and is skipped.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    private function captureFeedback(): void
+    {
+        $item    = $this->getItem();
+        $queueId = $this->getQueueId((int) $item->content_id, $item->content_type);
+
+        if ($queueId === null) {
+            // The translation feedback view is only reachable from a queue row, so a missing one is unexpected.
+            Log::add(
+                sprintf('No queue row for content id %d; the corrections were not recorded.', (int) $item->content_id),
+                Log::WARNING,
+                'translations'
+            );
+
+            return;
+        }
+
+        $targetLanguage = (string) $item->target_language;
+        $state          = $this->translationState($queueId, $targetLanguage);
+
+        if ($state === null || (string) $state['translation_state'] !== self::STATE_REVIEW) {
+            return;
+        }
+
+        $machineDraft = (array) json_decode((string) $state['machine_draft'], true);
+
+        if ($machineDraft === []) {
+            return;
+        }
+
+        $properties = ContentTypesHelper::getProperties($item->content_type);
+        $row        = $this->loadItem((int) $item->translation_item['id'], (string) ($properties['table'] ?? ''));
+
+        if ($row === null) {
+            return;
+        }
+
+        $humanCorrection = TranslatableValuesHelper::flattenFields($row, (array) $item->translatable_fields);
+
+        foreach (TranslatableValuesHelper::collectCustomFields($row, $properties) as $name => $customField) {
+            $humanCorrection[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+        }
+
+        $this->recordFeedback($queueId, $machineDraft, $humanCorrection);
+    }
+
+    /**
+     * Publish the translation draft through its managing component.
+     *
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  void
+     *
+     * @throws  \RuntimeException  If the managing component refuses to publish the draft.
+     *
+     * @since   0.7.0
+     */
+    private function publishDraft(CMSApplicationInterface $application): void
+    {
+        $item       = $this->getItem();
+        $properties = ContentTypesHelper::getProperties($item->content_type);
+        $model      = $this->draftModel($application, $properties);
+        $ids        = [(int) $item->translation_item['id']];
+
+        // The managing component runs its own edit-state check, which can refuse a user this view allows.
+        if (!$model->publish($ids, 1)) {
+            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_PUBLISH_ERROR'));
+        }
+    }
+
+    /**
+     * Read a translation's queue state row.
+     *
+     * @param   integer  $queueId         The source item's queue row id.
+     * @param   string   $targetLanguage  The target language code.
+     *
+     * @return  array|null  The translation_state and machine_draft, or null when no row exists.
+     *
+     * @since   0.7.0
+     */
+    private function translationState(int $queueId, string $targetLanguage): ?array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['translation_state', 'machine_draft']))
+            ->from($db->quoteName('#__translations_queue_states'))
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('target_language') . ' = :targetLanguage')
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':targetLanguage', $targetLanguage, ParameterType::STRING);
+        $db->setQuery($query);
+
+        return $db->loadAssoc();
+    }
+
+    /**
+     * Set a translation's state for the target language.
+     *
+     * @param   string  $translationState  The state to store.
+     *
+     * @return  void
+     *
+     * @since   0.7.0
+     */
+    private function setTranslationState(string $translationState): void
+    {
+        $item    = $this->getItem();
+        $queueId = $this->getQueueId((int) $item->content_id, $item->content_type);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        $targetLanguage = (string) $item->target_language;
+        $db             = $this->getDatabase();
+        $query          = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue_states'))
+            ->set($db->quoteName('translation_state') . ' = :state')
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('target_language') . ' = :targetLanguage')
+            ->bind(':state', $translationState, ParameterType::STRING)
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':targetLanguage', $targetLanguage, ParameterType::STRING);
+        $db->setQuery($query)->execute();
     }
 
     /**
@@ -421,9 +585,10 @@ class TranslatorfeedbackModel extends FormModel
      *
      * Each row pairs like with like - the source text, the machine draft and the human
      * correction for the same field - so the distiller later has clean, coherent pairs.
-     * A field whose correction matches the machine draft is skipped (no change, nothing to
-     * learn), the same principle Joomla versioning uses. status/created/context_tags/diff_data
-     * fall back to their table defaults; diff_data is filled later by the diff feature.
+     * A field whose correction matches the machine draft, apart from the whitespace around it,
+     * is skipped (no change, nothing to learn), the same principle Joomla versioning uses.
+     * status/created/context_tags/diff_data fall back to their table defaults; diff_data is
+     * filled later by the diff feature.
      *
      * @param   integer  $queueId          The queue row this feedback belongs to.
      * @param   array    $machineDraft     Pre-edit field values keyed by field.
@@ -443,12 +608,13 @@ class TranslatorfeedbackModel extends FormModel
 
         // The custom-field source values feed the same pairs, under the namespaced key save() used.
         foreach ((array) $item->source_custom_fields as $name => $customField) {
-            $sourceValues[self::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
+            $sourceValues[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] = $customField['value'];
         }
 
         foreach ($machineDraft as $field => $machineValue) {
             // Only changed fields are worth learning from - an untouched field is not a correction.
-            if (($humanCorrection[$field] ?? '') === $machineValue) {
+            // An editor field returns its content without the whitespace around it, which is not a correction either.
+            if (trim((string) ($humanCorrection[$field] ?? '')) === trim((string) $machineValue)) {
                 continue;
             }
 
@@ -463,50 +629,6 @@ class TranslatorfeedbackModel extends FormModel
 
             $db->insertObject('#__translations_feedback', $row);
         }
-    }
-
-    /**
-     * Flatten an item's translatable fields into one value map keyed by field.
-     *
-     * Plain columns are read directly; a JSON column's sub-fields are read from inside it
-     * and keyed by their sub-field name (the same keys the form uses). Unlike the producer's
-     * collection, empty values are kept, so the editor shows every field the source has.
-     * The field list comes from the content type map: a plain name is a column, an array
-     * maps a JSON column to its translatable sub-keys.
-     *
-     * @param   array  $row                 The item's column values.
-     * @param   array  $translatableFields  The content type's translatable field list.
-     *
-     * @return  array  The field values keyed by field name.
-     *
-     * @since   0.4.0
-     */
-    private function flattenFields(array $row, array $translatableFields): array
-    {
-        $values = [];
-
-        foreach ($translatableFields as $field) {
-            if (\is_string($field)) {
-                $values[$field] = (string) ($row[$field] ?? '');
-
-                continue;
-            }
-
-            if (!\is_array($field)) {
-                continue;
-            }
-
-            foreach ($field as $jsonColumn => $subKeys) {
-                $registry = new Registry($row[$jsonColumn] ?? '');
-
-                foreach ((array) $subKeys as $subKey) {
-                    $subKey          = (string) $subKey;
-                    $values[$subKey] = (string) $registry->get($subKey, '');
-                }
-            }
-        }
-
-        return $values;
     }
 
     /**
@@ -550,45 +672,6 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         return $row;
-    }
-
-    /**
-     * Gather an item's translatable custom-field values, keyed by field name.
-     *
-     * Read with FieldsHelper directly (the raw stored value, not the display HTML), the same read
-     * the producer uses, and limited to the translatable types so the editor shows only fields a
-     * translator can correct. A content type with no custom-field context returns nothing.
-     *
-     * @param   array  $item        The item's column values.
-     * @param   array  $properties  The content type's properties from the map.
-     *
-     * @return  array  Per field name, ['label' => string, 'value' => string, 'type' => string].
-     *
-     * @since   0.4.0
-     */
-    private function collectCustomFields(array $item, array $properties): array
-    {
-        $context = (string) ($properties['context_custom_fields'] ?? '');
-
-        if ($context === '') {
-            return [];
-        }
-
-        $customFields = [];
-
-        foreach (FieldsHelper::getFields($context, $item) as $field) {
-            if (!\in_array($field->type, self::TRANSLATABLE_FIELD_TYPES, true)) {
-                continue;
-            }
-
-            $customFields[$field->name] = [
-                'label' => (string) $field->label,
-                'value' => (string) $field->rawvalue,
-                'type'  => (string) $field->type,
-            ];
-        }
-
-        return $customFields;
     }
 
     /**
@@ -641,9 +724,9 @@ class TranslatorfeedbackModel extends FormModel
             'source_language'           => $sourceItem !== null ? (string) ($sourceItem['language'] ?? '') : '',
             'source_item'               => $sourceItem,
             'translation_item'          => $translationItem,
-            'source_values'             => $sourceItem !== null ? $this->flattenFields($sourceItem, $translatableFields) : [],
-            'source_custom_fields'      => $sourceItem !== null ? $this->collectCustomFields($sourceItem, $properties) : [],
-            'translation_custom_fields' => $translationItem !== null ? $this->collectCustomFields($translationItem, $properties) : [],
+            'source_values'             => $sourceItem !== null ? TranslatableValuesHelper::flattenFields($sourceItem, $translatableFields) : [],
+            'source_custom_fields'      => $sourceItem !== null ? TranslatableValuesHelper::collectCustomFields($sourceItem, $properties) : [],
+            'translation_custom_fields' => $translationItem !== null ? TranslatableValuesHelper::collectCustomFields($translationItem, $properties) : [],
             'translatable_fields'       => $translatableFields,
             'editable'                  => $editable,
         ];
