@@ -5,6 +5,7 @@
 			name="translation_title"
 			type="text"
 			label="COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_FIELD_TITLE"
+			required="true"
 		/>
 		<field
 			name="translation_introtext"
