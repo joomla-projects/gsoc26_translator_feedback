@@ -11,6 +11,7 @@
 defined('_JEXEC') or die;
 
 use Joomla\CMS\HTML\HTMLHelper;
+use Joomla\CMS\Helper\ContentHelper;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Router\Route;
 
@@ -120,6 +121,27 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
                     <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE'); ?>
                 </button>
             </joomla-toolbar-button>
+            <joomla-toolbar-button task="translatorfeedback.save2close" form="adminForm" form-validation>
+                <button type="button" class="btn btn-primary">
+                    <span class="icon-check" aria-hidden="true"></span>
+                    <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE_CLOSE'); ?>
+                </button>
+            </joomla-toolbar-button>
+            <?php // Approval is offered to anyone who may edit; publishing it is a separate permission. ?>
+            <joomla-toolbar-button task="translatorfeedback.approve" form="adminForm" form-validation>
+                <button type="button" class="btn btn-success">
+                    <span class="icon-check" aria-hidden="true"></span>
+                    <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE'); ?>
+                </button>
+            </joomla-toolbar-button>
+            <?php if (ContentHelper::getActions('com_translations')->get('core.edit.state')) : ?>
+                <joomla-toolbar-button task="translatorfeedback.approveAndPublish" form="adminForm" form-validation>
+                    <button type="button" class="btn btn-success">
+                        <span class="icon-publish" aria-hidden="true"></span>
+                        <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_APPROVE_PUBLISH'); ?>
+                    </button>
+                </joomla-toolbar-button>
+            <?php endif; ?>
             <joomla-toolbar-button task="translatorfeedback.cancel" form="adminForm">
                 <button type="button" class="btn btn-danger">
                     <span class="icon-times" aria-hidden="true"></span>
