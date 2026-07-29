@@ -106,11 +106,23 @@ $action = 'index.php?option=com_translations&view=translatorfeedback&layout=edit
 
 <form action="<?php echo Route::_($action); ?>" method="post" name="adminForm" id="adminForm" class="form-validate">
 
-    <div class="mb-3">
+    <div class="d-grid gap-2 d-sm-flex mb-3">
         <a class="btn btn-secondary" href="<?php echo Route::_('index.php?option=com_translations&view=queue'); ?>">
             <span class="icon-arrow-left" aria-hidden="true"></span>
             <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_BACK_TO_QUEUE'); ?>
         </a>
+
+        <?php // The administrator carries these actions in its toolbar, which the site does not render. ?>
+        <?php if ($this->isSite && $hasTranslation) : ?>
+            <button type="button" class="btn btn-primary" data-submit-task="translatorfeedback.save">
+                <span class="icon-check" aria-hidden="true"></span>
+                <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_SAVE'); ?>
+            </button>
+            <button type="button" class="btn btn-danger" data-submit-task="translatorfeedback.cancel">
+                <span class="icon-times" aria-hidden="true"></span>
+                <?php echo Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_CLOSE'); ?>
+            </button>
+        <?php endif; ?>
     </div>
 
     <?php if ($sourceItem === null) : ?>

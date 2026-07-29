@@ -48,6 +48,14 @@ class HtmlView extends BaseHtmlView
     public $item;
 
     /**
+     * Whether the view is rendered in the site, where there is no toolbar to carry the actions.
+     *
+     * @var    boolean
+     * @since  0.7.0
+     */
+    public $isSite = false;
+
+    /**
      * Render the view.
      *
      * @param   string  $tpl  The template name.
@@ -63,12 +71,26 @@ class HtmlView extends BaseHtmlView
         $this->item = $model->getItem();
         $this->form = $model->getForm();
 
-        // The editing form needs the validator so the Save toolbar button can submit, plus keepalive.
+        $this->isSite = Factory::getApplication()->isClient('site');
+
+        // The editing form needs the validator so the Save button can submit, plus keepalive.
         // The stylesheet caps the read-only original pane so a long source scrolls beside the editor.
-        $this->getDocument()->getWebAssetManager()
-            ->useScript('keepalive')
+        $webAssetManager = $this->getDocument()->getWebAssetManager();
+        $webAssetManager->useScript('keepalive')
             ->useScript('form.validate')
             ->registerAndUseStyle('com_translations.translatorfeedback', 'com_translations/translatorfeedback.css');
+
+        // Only the administrator renders a toolbar, so in the site the buttons are part of the
+        // form and this script submits their task.
+        if ($this->isSite) {
+            $webAssetManager->registerAndUseScript(
+                'com_translations.translatorfeedback',
+                'com_translations/translatorfeedback.js',
+                [],
+                ['type' => 'module'],
+                ['core']
+            );
+        }
 
         $this->addToolbar();
 
@@ -119,6 +141,6 @@ class HtmlView extends BaseHtmlView
                 ->icon('icon-publish');
         }
 
-        $toolbar->cancel('translatorfeedback.cancel', 'JTOOLBAR_CLOSE');
+        $toolbar->cancel('translatorfeedback.cancel', 'COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_CLOSE');
     }
 }
