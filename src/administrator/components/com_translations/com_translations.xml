@@ -24,6 +24,10 @@
     <media folder="media/com_translations" destination="com_translations">
         <folder>css</folder>
     </media>
+    <files folder="components/com_translations">
+        <folder>src</folder>
+        <folder>tmpl</folder>
+    </files>
     <administration>
         <files folder="administrator/components/com_translations">
             <folder>services</folder>
