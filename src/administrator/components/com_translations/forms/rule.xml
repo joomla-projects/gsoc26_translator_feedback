@@ -148,17 +148,17 @@
             filter="unset"
             validate="UserId"
         />
-
-        <field
-            name="checked_out"
-            type="hidden"
-            filter="unset"
-        />
-
-        <field
-            name="checked_out_time"
-            type="hidden"
-            filter="unset"
-        />
     </fieldset>
+
+    <field
+        name="checked_out"
+        type="hidden"
+        filter="unset"
+    />
+
+    <field
+        name="checked_out_time"
+        type="hidden"
+        filter="unset"
+    />
 </form>
