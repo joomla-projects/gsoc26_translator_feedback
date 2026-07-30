@@ -265,8 +265,10 @@ final class Claude extends CMSPlugin implements SubscriberInterface
             . ' them empty for style. "rule_text" states the rule in plain language as it will be given to the'
             . ' translation model; "confidence" is between 0 and 1 (about 0.9 or higher for a well-established'
             . ' convention, 0.5 to 0.7 for a plausible pattern seen once);'
-            . ' "search_keywords" holds words to match the rule against a text; "source_feedback_ids" lists the'
-            . ' correction ids the rule came from. Respond with only the JSON object described by the schema.',
+            . ' "search_keywords" holds only %1$s words, because the rule is matched against the source text'
+            . ' before it is translated;'
+            . ' "source_feedback_ids" lists the correction ids the rule came from. Respond with only the JSON'
+            . ' object described by the schema.',
             $sourceLanguage,
             $targetLanguage
         );
