@@ -122,8 +122,10 @@ if ($saveOrder && !empty($this->items)) {
                                             <?php if ($item->source_term !== null && $item->source_term !== '') : ?>
                                                 <div class="small">
                                                     <?php echo $this->escape($item->source_term); ?>
-                                                    <span aria-hidden="true">&#8594;</span>
-                                                    <?php echo $this->escape((string) $item->target_term); ?>
+                                                    <?php if ((string) $item->target_term !== '') : ?>
+                                                        <span aria-hidden="true">&#8594;</span>
+                                                        <?php echo $this->escape((string) $item->target_term); ?>
+                                                    <?php endif; ?>
                                                 </div>
                                             <?php endif; ?>
                                         </div>

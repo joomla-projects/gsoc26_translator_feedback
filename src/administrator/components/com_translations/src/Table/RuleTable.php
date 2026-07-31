@@ -119,7 +119,7 @@ class RuleTable extends Table
             throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TYPE'));
         }
 
-        // Requiredness is per rule type; showon hides the irrelevant fields but does not validate them.
+        // Fields and requiredness are per rule type; showon only hides the others, so they are still submitted.
         switch ($this->rule_type) {
             case 'terminology':
                 if (trim((string) $this->source_term) === '') {
@@ -137,12 +137,20 @@ class RuleTable extends Table
                     throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_SOURCE_TERM'));
                 }
 
+                // A preserved term is kept as it stands, so it has no translation.
+                $this->target_term = '';
+
                 break;
 
             case 'style':
                 if (trim((string) $this->rule_text) === '') {
                     throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TEXT'));
                 }
+
+                // A style rule is not matched against terms, so it carries none.
+                $this->source_term     = '';
+                $this->target_term     = '';
+                $this->search_keywords = '';
 
                 break;
         }
