@@ -72,7 +72,7 @@ class HtmlView extends BaseHtmlView
      * Whether the view is rendered in the site, where there is no toolbar to carry the actions.
      *
      * @var    boolean
-     * @since  0.7.0
+     * @since  0.9.0
      */
     public $isSite = false;
 

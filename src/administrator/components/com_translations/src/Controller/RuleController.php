@@ -37,7 +37,7 @@ class RuleController extends FormController
      *
      * @return  \Joomla\CMS\MVC\Model\BaseDatabaseModel  The model.
      *
-     * @since   0.7.0
+     * @since   0.9.0
      */
     public function getModel($name = 'Rule', $prefix = 'Administrator', $config = ['ignore_request' => true])
     {

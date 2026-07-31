@@ -112,7 +112,7 @@ class TranslationController extends BaseController
      *
      * @return  \Joomla\CMS\MVC\Model\BaseDatabaseModel  The model.
      *
-     * @since   0.7.0
+     * @since   0.9.0
      */
     public function getModel($name = 'Translation', $prefix = 'Administrator', $config = [])
     {

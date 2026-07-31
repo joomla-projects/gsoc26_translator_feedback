@@ -28,7 +28,7 @@ use Joomla\CMS\MVC\Controller\BaseController;
  * that happen; the language and form lookups that go with it are redirected here as well,
  * because both resolve against the site by default.
  *
- * @since  0.7.0
+ * @since  0.9.0
  */
 class Dispatcher extends ComponentDispatcher
 {
@@ -37,7 +37,7 @@ class Dispatcher extends ComponentDispatcher
      *
      * @return  void
      *
-     * @since   0.7.0
+     * @since   0.9.0
      */
     protected function loadLanguage()
     {
@@ -51,7 +51,7 @@ class Dispatcher extends ComponentDispatcher
      *
      * @return  void
      *
-     * @since   0.7.0
+     * @since   0.9.0
      *
      * @throws  NotAllowed
      */
@@ -73,7 +73,7 @@ class Dispatcher extends ComponentDispatcher
      *
      * @return  BaseController
      *
-     * @since   0.7.0
+     * @since   0.9.0
      */
     public function getController(string $name, string $client = '', array $config = []): BaseController
     {
