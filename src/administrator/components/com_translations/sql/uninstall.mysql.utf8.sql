@@ -1,3 +1,4 @@
+DROP TABLE IF EXISTS `#__translations_standard_forms`;
 DROP TABLE IF EXISTS `#__translations_feedback`;
 DROP TABLE IF EXISTS `#__translations_rules`;
 DROP TABLE IF EXISTS `#__translations_queue_states`;

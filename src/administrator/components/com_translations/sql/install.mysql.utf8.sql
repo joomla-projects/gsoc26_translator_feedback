@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS `#__translations_rules` (
   `target_language` char(7) NOT NULL,
   `rule_text` text NOT NULL,
   `source_term` varchar(255) DEFAULT NULL,
+  `source_term_standard` varchar(255) DEFAULT NULL,
   `target_term` varchar(255) DEFAULT NULL,
   `search_keywords` varchar(500) NOT NULL DEFAULT '',
   `confidence` decimal(3,2) NOT NULL DEFAULT 0.00,
@@ -89,7 +90,22 @@ CREATE TABLE IF NOT EXISTS `#__translations_rules` (
   KEY `idx_type_lang` (`rule_type`, `target_language`),
   KEY `idx_state` (`state`),
   KEY `idx_source_term` (`source_term`),
+  KEY `idx_source_term_standard` (`source_term_standard`),
   KEY `idx_confidence` (`confidence`),
   KEY `idx_weight` (`weight`),
   KEY `idx_origin` (`source_origin`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Table structure for table `#__translations_standard_forms`
+--
+
+CREATE TABLE IF NOT EXISTS `#__translations_standard_forms` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `language` char(7) NOT NULL,
+  `word` varchar(255) NOT NULL,
+  `standard_form` varchar(255) NOT NULL,
+  `created` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_language_word` (`language`, `word`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 DEFAULT COLLATE=utf8mb4_unicode_ci;

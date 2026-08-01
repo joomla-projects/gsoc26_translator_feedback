@@ -16,6 +16,7 @@ namespace Joomla\Plugin\Rag\Claude\Extension;
 
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\Component\Translations\Administrator\Event\DistilEvent;
+use Joomla\Component\Translations\Administrator\Event\NormaliseEvent;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Http\Http;
 
@@ -102,7 +103,8 @@ final class Claude extends CMSPlugin implements SubscriberInterface
     public static function getSubscribedEvents(): array
     {
         return [
-            'onDistil' => 'onDistil',
+            'onDistil'    => 'onDistil',
+            'onNormalise' => 'onNormalise',
         ];
     }
 
@@ -141,6 +143,169 @@ final class Claude extends CMSPlugin implements SubscriberInterface
 
         // One provider answers per batch; stop the rest of the group running.
         $event->stopPropagation();
+    }
+
+    /**
+     * Reduce words to their standard form with the Claude API.
+     *
+     * Reads the words and their language from the event and adds the standard form of each
+     * one for the component. A missing key or any API failure throws, so the reason reaches
+     * the caller, which falls back to matching the words as they were written.
+     *
+     * @param   NormaliseEvent  $event  The normalise event.
+     *
+     * @return  void
+     *
+     * @throws  \RuntimeException  When the key is missing or the API call fails.
+     *
+     * @since   0.9.0
+     */
+    public function onNormalise(NormaliseEvent $event): void
+    {
+        $apiKey = trim((string) $this->params->get('api_key', ''));
+
+        if ($apiKey === '') {
+            throw new \RuntimeException('No Claude API key is configured for the RAG plugin.');
+        }
+
+        $words = $event->getWords();
+
+        if ($words === []) {
+            $event->addResult([]);
+            $event->stopPropagation();
+
+            return;
+        }
+
+        $event->addResult($this->requestNormalisation($words, $event->getLanguage(), $apiKey));
+
+        // One provider answers per batch; stop the rest of the group running.
+        $event->stopPropagation();
+    }
+
+    /**
+     * Ask the Claude API for the standard form of each word.
+     *
+     * The words are sent as one JSON array; the reply is constrained to the standard-form
+     * schema, so it is always valid JSON.
+     *
+     * @param   array   $words     The words to reduce.
+     * @param   string  $language  The language the words are written in.
+     * @param   string  $apiKey    The Anthropic API key.
+     *
+     * @return  array  Standard form keyed by the word it was given.
+     *
+     * @throws  \RuntimeException  When the API cannot be reached or returns an error.
+     *
+     * @since   0.9.0
+     */
+    private function requestNormalisation(array $words, string $language, string $apiKey): array
+    {
+        $payload = [
+            'model'         => (string) $this->params->get('model', 'claude-sonnet-5'),
+            'max_tokens'    => self::MAX_TOKENS,
+            'system'        => $this->normaliseSystemPrompt($language),
+            'messages'      => [
+                [
+                    'role'    => 'user',
+                    'content' => json_encode(
+                        ['words' => array_values($words)],
+                        JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                    ),
+                ],
+            ],
+            'output_config' => ['format' => $this->standardFormsResponseFormat()],
+        ];
+
+        return $this->parseNormalisation($this->callApi($payload, $apiKey));
+    }
+
+    /**
+     * Build the system prompt that states how a word is reduced to its standard form.
+     *
+     * @param   string  $language  The language the words are written in.
+     *
+     * @return  string
+     *
+     * @since   0.9.0
+     */
+    private function normaliseSystemPrompt(string $language): string
+    {
+        return \sprintf(
+            'You reduce %1$s words to the standard form they would be listed under in a'
+            . ' dictionary, so that a term and its inflected forms can be matched as one.'
+            . ' Give a noun in its singular, a verb in its infinitive without any particle,'
+            . ' and an adjective in its positive degree. Return every word you are given,'
+            . ' each with the "word" exactly as you received it; a word that is already in'
+            . ' its standard form, or that has no other form, is returned unchanged. The'
+            . ' standard form is a single %1$s word in lower case, never a phrase, never a'
+            . ' translation, and never an explanation. Respond with only the JSON object'
+            . ' described by the schema.',
+            $language
+        );
+    }
+
+    /**
+     * Build the structured-output format that pins the reply to the standard-form schema.
+     *
+     * The pairs come back as a list rather than an object keyed by word, because the schema
+     * has to name every property it allows and the words differ on each request.
+     *
+     * @return  array
+     *
+     * @since   0.9.0
+     */
+    private function standardFormsResponseFormat(): array
+    {
+        $word = [
+            'type'                 => 'object',
+            'properties'           => [
+                'word'          => ['type' => 'string'],
+                'standard_form' => ['type' => 'string'],
+            ],
+            'required'             => ['word', 'standard_form'],
+            'additionalProperties' => false,
+        ];
+
+        return [
+            'type'   => 'json_schema',
+            'schema' => [
+                'type'                 => 'object',
+                'properties'           => ['words' => ['type' => 'array', 'items' => $word]],
+                'required'             => ['words'],
+                'additionalProperties' => false,
+            ],
+        ];
+    }
+
+    /**
+     * Pull the standard forms out of the API response.
+     *
+     * @param   string  $body  The API response body.
+     *
+     * @return  array  Standard form keyed by the word it was given.
+     *
+     * @throws  \RuntimeException  When the response holds no usable standard forms.
+     *
+     * @since   0.9.0
+     */
+    private function parseNormalisation(string $body): array
+    {
+        $decoded = $this->decodeReply($body, 'normalisation');
+
+        if (!isset($decoded['words']) || !\is_array($decoded['words'])) {
+            throw new \RuntimeException('The Claude API returned an unreadable normalisation.');
+        }
+
+        $forms = [];
+
+        foreach ($decoded['words'] as $pair) {
+            if (\is_array($pair) && ($pair['word'] ?? '') !== '') {
+                $forms[(string) $pair['word']] = (string) ($pair['standard_form'] ?? '');
+            }
+        }
+
+        return $forms;
     }
 
     /**
@@ -328,14 +493,42 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      */
     private function parseDistillation(string $body): array
     {
+        $decoded = $this->decodeReply($body, 'distillation');
+
+        if (!isset($decoded['rules']) || !\is_array($decoded['rules'])) {
+            throw new \RuntimeException('The Claude API returned an unreadable distillation.');
+        }
+
+        return $decoded['rules'];
+    }
+
+    /**
+     * Decode the JSON object the API was asked to reply with.
+     *
+     * The reply is pinned by a structured-output schema, so anything that is not a readable
+     * JSON object means the request was refused or cut off rather than answered.
+     *
+     * @param   string  $body  The API response body.
+     * @param   string  $what  What was asked for, named in the error the user sees.
+     *
+     * @return  array  The decoded reply.
+     *
+     * @throws  \RuntimeException  When the reply is refused, cut off or unreadable.
+     *
+     * @since   0.9.0
+     */
+    private function decodeReply(string $body, string $what): array
+    {
         $response = json_decode($body, true);
 
         if (($response['stop_reason'] ?? '') === 'refusal') {
-            throw new \RuntimeException('The Claude API refused the distillation request.');
+            throw new \RuntimeException(\sprintf('The Claude API refused the %s request.', $what));
         }
 
         if (($response['stop_reason'] ?? '') === 'max_tokens') {
-            throw new \RuntimeException('The Claude API response was cut off because the batch is too large to distil in one request.');
+            throw new \RuntimeException(
+                \sprintf('The Claude API response was cut off because the %s request is too large.', $what)
+            );
         }
 
         $text = '';
@@ -350,10 +543,10 @@ final class Claude extends CMSPlugin implements SubscriberInterface
 
         $decoded = json_decode(trim($text), true);
 
-        if (!\is_array($decoded) || !isset($decoded['rules']) || !\is_array($decoded['rules'])) {
-            throw new \RuntimeException('The Claude API returned an unreadable distillation.');
+        if (!\is_array($decoded)) {
+            throw new \RuntimeException(\sprintf('The Claude API returned an unreadable %s.', $what));
         }
 
-        return $decoded['rules'];
+        return $decoded;
     }
 }
