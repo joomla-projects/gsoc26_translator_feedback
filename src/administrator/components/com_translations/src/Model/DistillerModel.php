@@ -20,6 +20,7 @@ use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Translations\Administrator\Event\DistilEvent;
+use Joomla\Component\Translations\Administrator\Helper\WordNormaliser;
 use Joomla\Component\Translations\Administrator\Table\RuleTable;
 use Joomla\Database\ParameterType;
 
@@ -366,14 +367,22 @@ class DistillerModel extends BaseDatabaseModel
         // The rule fields the provider (re)states each time. Bind them (rather than set them
         // directly) so the table's _jsonEncode encodes source_feedback_ids and the array is
         // not dropped by the driver on store.
+        $sourceTerm = $this->nullableTerm($candidate['source_term'] ?? null);
+
         $data = [
-            'rule_name'       => (string) ($candidate['rule_name'] ?? ''),
-            'rule_type'       => (string) ($candidate['rule_type'] ?? ''),
-            'target_language' => $targetLanguage,
-            'rule_text'       => (string) ($candidate['rule_text'] ?? ''),
-            'source_term'     => $this->nullableTerm($candidate['source_term'] ?? null),
-            'target_term'     => $this->nullableTerm($candidate['target_term'] ?? null),
-            'search_keywords' => (string) ($candidate['search_keywords'] ?? ''),
+            'rule_name'            => (string) ($candidate['rule_name'] ?? ''),
+            'rule_type'            => (string) ($candidate['rule_type'] ?? ''),
+            'target_language'      => $targetLanguage,
+            'rule_text'            => (string) ($candidate['rule_text'] ?? ''),
+            'source_term'          => $sourceTerm,
+            'source_term_standard' => WordNormaliser::standardForm(
+                $this->getDatabase(),
+                $this->getDispatcher(),
+                (string) $sourceTerm,
+                (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB')
+            ),
+            'target_term'          => $this->nullableTerm($candidate['target_term'] ?? null),
+            'search_keywords'      => (string) ($candidate['search_keywords'] ?? ''),
         ];
 
         if ($existingId > 0 && $table->load($existingId)) {
