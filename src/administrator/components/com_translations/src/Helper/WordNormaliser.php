@@ -47,14 +47,35 @@ class WordNormaliser
     private const MIN_WORD_LENGTH = 3;
 
     /**
-     * Upper bound on the words sent in one request, so a long article cannot build an
-     * unbounded prompt. Words beyond it resolve on a later run, once the earlier ones are
-     * stored.
+     * Upper bound on the words sent in one request. A provider answers with a pair per word,
+     * so this is really a limit on the reply: measured against the Claude plugin, 200 words
+     * come back in about 40 percent of the reply it is allowed, which leaves room for a batch
+     * of unusually long words to grow without being truncated.
      *
      * @var    integer
      * @since  0.9.0
      */
-    private const MAX_WORDS_PER_REQUEST = 300;
+    private const MAX_WORDS_PER_REQUEST = 200;
+
+    /**
+     * Upper bound on the requests one article may take, so an unusually varied text cannot
+     * hold up the translation it is being prepared for. Words beyond it keep the form they
+     * were written in until a later run resolves them.
+     *
+     * @var    integer
+     * @since  0.9.0
+     */
+    private const MAX_REQUESTS = 5;
+
+    /**
+     * How many batches in a row may come back with nothing before the rest are abandoned. A
+     * provider that is unreachable answers no batch, so there is no point working through the
+     * remainder; a single batch a provider declines is worth passing over.
+     *
+     * @var    integer
+     * @since  0.9.0
+     */
+    private const MAX_CONSECUTIVE_FAILURES = 2;
 
     /**
      * Reduce words to their standard form, reading what is already stored and asking a
@@ -88,10 +109,25 @@ class WordNormaliser
             return $known;
         }
 
-        $resolved = self::askProvider($dispatcher, \array_slice($missing, 0, self::MAX_WORDS_PER_REQUEST), $language);
+        $resolved = [];
+        $failures = 0;
 
-        if ($resolved !== []) {
-            self::store($db, $resolved, $language);
+        foreach (\array_slice(array_chunk($missing, self::MAX_WORDS_PER_REQUEST), 0, self::MAX_REQUESTS) as $batch) {
+            $forms = self::askProvider($dispatcher, $batch, $language);
+
+            if ($forms === []) {
+                if (++$failures >= self::MAX_CONSECUTIVE_FAILURES) {
+                    break;
+                }
+
+                continue;
+            }
+
+            $failures = 0;
+
+            self::store($db, $forms, $language);
+
+            $resolved += $forms;
         }
 
         return $known + $resolved;
