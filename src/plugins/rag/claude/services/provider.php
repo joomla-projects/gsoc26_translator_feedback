@@ -2,7 +2,7 @@
 
 /**
  * @package     Joomla.Plugin
- * @subpackage  Distillation.claude
+ * @subpackage  Rag.claude
  *
  * @copyright   (C) 2026 Open Source Matters, Inc. <https://www.joomla.org>
  * @license     GNU General Public License version 2 or later; see LICENSE.txt
@@ -17,7 +17,7 @@ use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\DI\Container;
 use Joomla\DI\ServiceProviderInterface;
 use Joomla\Http\HttpFactory;
-use Joomla\Plugin\Distillation\Claude\Extension\Claude;
+use Joomla\Plugin\Rag\Claude\Extension\Claude;
 
 return new class () implements ServiceProviderInterface {
     /**
@@ -35,7 +35,7 @@ return new class () implements ServiceProviderInterface {
             PluginInterface::class,
             function (Container $container) {
                 return new Claude(
-                    (array) PluginHelper::getPlugin('distillation', 'claude'),
+                    (array) PluginHelper::getPlugin('rag', 'claude'),
                     (new HttpFactory())->getHttp()
                 );
             }
