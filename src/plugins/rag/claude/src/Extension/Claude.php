@@ -2,13 +2,13 @@
 
 /**
  * @package     Joomla.Plugin
- * @subpackage  Distillation.claude
+ * @subpackage  Rag.claude
  *
  * @copyright   (C) 2026 Open Source Matters, Inc. <https://www.joomla.org>
  * @license     GNU General Public License version 2 or later; see LICENSE.txt
  */
 
-namespace Joomla\Plugin\Distillation\Claude\Extension;
+namespace Joomla\Plugin\Rag\Claude\Extension;
 
 // phpcs:disable PSR1.Files.SideEffects
 \defined('_JEXEC') or die;
@@ -126,7 +126,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
         $apiKey = trim((string) $this->params->get('api_key', ''));
 
         if ($apiKey === '') {
-            throw new \RuntimeException('No Claude API key is configured for the distillation plugin.');
+            throw new \RuntimeException('No Claude API key is configured for the RAG plugin.');
         }
 
         $rules = $this->requestDistillation(
