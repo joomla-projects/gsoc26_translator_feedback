@@ -147,10 +147,11 @@ class RuleTable extends Table
                     throw new \Exception(Text::_('COM_TRANSLATIONS_RULE_ERROR_TEXT'));
                 }
 
-                // A style rule is not matched against terms, so it carries none.
-                $this->source_term     = '';
-                $this->target_term     = '';
-                $this->search_keywords = '';
+                // A style rule is not matched against terms, so it carries neither them nor their standard form.
+                $this->source_term          = '';
+                $this->source_term_standard = null;
+                $this->target_term          = '';
+                $this->search_keywords      = '';
 
                 break;
         }

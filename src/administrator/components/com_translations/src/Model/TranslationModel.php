@@ -375,7 +375,13 @@ class TranslationModel extends BaseDatabaseModel
         PluginHelper::importPlugin('translation', null, true, $dispatcher);
 
         // Distilled rules relevant to the item, so a provider can steer the translation.
-        $rules = RuleRetriever::retrieve($this->getDatabase(), $strings, $targetLanguage);
+        $rules = RuleRetriever::retrieve(
+            $this->getDatabase(),
+            $dispatcher,
+            $strings,
+            $sourceLanguage,
+            $targetLanguage
+        );
 
         $event = new TranslateEvent('onTranslate', [
             'sourceStrings'  => $strings,

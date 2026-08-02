@@ -16,6 +16,7 @@ namespace Joomla\Component\Translations\Administrator\Helper;
 
 use Joomla\Database\DatabaseInterface;
 use Joomla\Database\ParameterType;
+use Joomla\Event\DispatcherInterface;
 
 /**
  * Retrieves the distilled rules relevant to an item, to steer its translation.
@@ -63,20 +64,53 @@ class RuleRetriever
     /**
      * Retrieve the published rules relevant to an item's source strings, grouped by rule type.
      *
-     * @param   DatabaseInterface  $db              The database driver.
-     * @param   array              $sourceStrings   The item's source strings, keyed by field.
-     * @param   string             $targetLanguage  The target language code.
+     * @param   DatabaseInterface    $db              The database driver.
+     * @param   DispatcherInterface  $dispatcher      The dispatcher used to reduce words to their standard form.
+     * @param   array                $sourceStrings   The item's source strings, keyed by field.
+     * @param   string               $sourceLanguage  The source language code.
+     * @param   string               $targetLanguage  The target language code.
      *
      * @return  array  Selected rules keyed by rule type ('terminology', 'style', 'preservation').
      *
      * @since   0.7.0
      */
-    public static function retrieve(DatabaseInterface $db, array $sourceStrings, string $targetLanguage): array
+    public static function retrieve(
+        DatabaseInterface $db,
+        DispatcherInterface $dispatcher,
+        array $sourceStrings,
+        string $sourceLanguage,
+        string $targetLanguage
+    ): array {
+        $rules = self::loadPublishedRules($db, $targetLanguage);
+        $text  = self::plainText($sourceStrings);
+
+        // Reducing the text only changes which rules match when a rule has a standard form to
+        // match against, so a language whose rules have none is spared the work entirely.
+        $standardForms = self::hasStandardForm($rules)
+            ? WordNormaliser::standardForms($db, $dispatcher, WordNormaliser::tokenise($text), $sourceLanguage)
+            : [];
+
+        return self::selectRelevant($rules, $text, $standardForms);
+    }
+
+    /**
+     * Whether any of the rules carries a term in standard form.
+     *
+     * @param   array  $rules  The candidate rules.
+     *
+     * @return  boolean
+     *
+     * @since   0.7.0
+     */
+    private static function hasStandardForm(array $rules): bool
     {
-        return self::selectRelevant(
-            self::loadPublishedRules($db, $targetLanguage),
-            self::plainText($sourceStrings)
-        );
+        foreach ($rules as $rule) {
+            if ((string) ($rule['source_term_standard'] ?? '') !== '') {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -106,14 +140,15 @@ class RuleRetriever
      * their term or a search keyword appears in the text. Rules arrive ordered by confidence, so
      * the caps keep the highest-ranked.
      *
-     * @param   array   $rules  The candidate rules, ordered by confidence, descending.
-     * @param   string  $text   The item's readable text.
+     * @param   array   $rules          The candidate rules, ordered by confidence, descending.
+     * @param   string  $text           The item's readable text.
+     * @param   array   $standardForms  Standard form keyed by the text's words, where known.
      *
      * @return  array  Selected rules keyed by rule type.
      *
      * @since   0.7.0
      */
-    public static function selectRelevant(array $rules, string $text): array
+    public static function selectRelevant(array $rules, string $text, array $standardForms = []): array
     {
         $selected = ['terminology' => [], 'style' => [], 'preservation' => []];
         $total    = 0;
@@ -129,7 +164,7 @@ class RuleRetriever
                 if (\count($selected['style']) >= self::MAX_STYLE_RULES) {
                     continue;
                 }
-            } elseif (!self::appliesToText($rule, $text)) {
+            } elseif (!self::appliesToText($rule, $text, $standardForms)) {
                 continue;
             }
 
@@ -148,17 +183,23 @@ class RuleRetriever
      * Whether a terminology or preservation rule applies to the text.
      *
      * True when the rule's source term, or one of its search keywords, appears in the text as a
-     * whole word.
+     * whole word. A rule whose term is stored in its standard form also matches the text's
+     * inflected forms of that word, so a rule for a singular noun applies to its plural.
      *
-     * @param   array   $rule  The rule row.
-     * @param   string  $text  The item's readable text.
+     * @param   array   $rule           The rule row.
+     * @param   string  $text           The item's readable text.
+     * @param   array   $standardForms  Standard form keyed by the text's words, where known.
      *
      * @return  boolean
      *
      * @since   0.7.0
      */
-    private static function appliesToText(array $rule, string $text): bool
+    private static function appliesToText(array $rule, string $text, array $standardForms = []): bool
     {
+        if (self::matchesStandardForm($rule, $standardForms)) {
+            return true;
+        }
+
         if (self::containsWord($text, (string) ($rule['source_term'] ?? ''))) {
             return true;
         }
@@ -170,6 +211,28 @@ class RuleRetriever
         }
 
         return false;
+    }
+
+    /**
+     * Whether the rule's term and one of the text's words share a standard form.
+     *
+     * Both sides are reduced by the same provider, which is what lets a rule apply to the
+     * inflected forms of its term. A rule stored without a standard form, or a text whose
+     * words could not be reduced, does not match here and falls back to the whole-word
+     * comparison.
+     *
+     * @param   array  $rule           The rule row.
+     * @param   array  $standardForms  Standard form keyed by the text's words, where known.
+     *
+     * @return  boolean
+     *
+     * @since   0.7.0
+     */
+    private static function matchesStandardForm(array $rule, array $standardForms): bool
+    {
+        $term = (string) ($rule['source_term_standard'] ?? '');
+
+        return $term !== '' && \in_array($term, $standardForms, true);
     }
 
     /**
@@ -209,7 +272,11 @@ class RuleRetriever
     {
         $state = self::STATE_PUBLISHED;
         $query = $db->getQuery(true)
-            ->select($db->quoteName(['rule_type', 'rule_text', 'source_term', 'target_term', 'search_keywords']))
+            ->select(
+                $db->quoteName(
+                    ['rule_type', 'rule_text', 'source_term', 'source_term_standard', 'target_term', 'search_keywords']
+                )
+            )
             ->from($db->quoteName('#__translations_rules'))
             ->where($db->quoteName('target_language') . ' = :lang')
             ->where($db->quoteName('state') . ' = :state')

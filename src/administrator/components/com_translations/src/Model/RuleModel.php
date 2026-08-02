@@ -14,8 +14,10 @@ namespace Joomla\Component\Translations\Administrator\Model;
 \defined('_JEXEC') or die;
 // phpcs:enable PSR1.Files.SideEffects
 
+use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Factory;
 use Joomla\CMS\MVC\Model\AdminModel;
+use Joomla\Component\Translations\Administrator\Helper\WordNormaliser;
 
 /**
  * Model for a single translation rule.
@@ -117,5 +119,14 @@ class RuleModel extends AdminModel
         if ($table->rule_text === null) {
             $table->rule_text = '';
         }
+
+        // Store the term in the form the source text is matched on, so a rule for a singular
+        // noun also applies to its plural. A term left unresolved is matched as it was typed.
+        $table->source_term_standard = WordNormaliser::standardForm(
+            $this->getDatabase(),
+            $this->getDispatcher(),
+            (string) $table->source_term,
+            (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB')
+        );
     }
 }
