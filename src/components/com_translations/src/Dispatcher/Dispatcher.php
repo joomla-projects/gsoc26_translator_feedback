@@ -17,6 +17,7 @@ namespace Joomla\Component\Translations\Site\Dispatcher;
 use Joomla\CMS\Access\Exception\NotAllowed;
 use Joomla\CMS\Dispatcher\ComponentDispatcher;
 use Joomla\CMS\Form\Form;
+use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\Controller\BaseController;
 
 /**
@@ -32,6 +33,14 @@ use Joomla\CMS\MVC\Controller\BaseController;
  */
 class Dispatcher extends ComponentDispatcher
 {
+    /**
+     * The administrator controllers the site serves.
+     *
+     * @var    string[]
+     * @since  0.9.0
+     */
+    private const SITE_CONTROLLERS = ['display', 'rule', 'rules', 'translation', 'translatorfeedback'];
+
     /**
      * Load the language.
      *
@@ -57,9 +66,15 @@ class Dispatcher extends ComponentDispatcher
      */
     protected function checkAccess()
     {
-        // The site applies no permission of its own, so the component applies the one the
-        // administrator would have applied.
-        if (!$this->app->getIdentity()->authorise('core.manage', $this->option)) {
+        $user = $this->app->getIdentity();
+
+        // The site applies no permission of its own, so the component applies its own. A translator
+        // works from the site alone, so editing the translations is enough and access to the
+        // administration interface is not required.
+        if (
+            !$user->authorise('core.manage', $this->option)
+            && !$user->authorise('core.edit', $this->option)
+        ) {
             throw new NotAllowed($this->app->getLanguage()->_('JERROR_ALERTNOAUTHOR'), 403);
         }
     }
@@ -74,9 +89,17 @@ class Dispatcher extends ComponentDispatcher
      * @return  BaseController
      *
      * @since   0.9.0
+     *
+     * @throws  \InvalidArgumentException
      */
     public function getController(string $name, string $client = '', array $config = []): BaseController
     {
+        // The administrator holds controllers the site has no screen for, such as distilling the
+        // rules, so only the ones a translator works with are resolved here.
+        if (!\in_array(strtolower($name), self::SITE_CONTROLLERS, true)) {
+            throw new \InvalidArgumentException(Text::sprintf('JLIB_APPLICATION_ERROR_INVALID_CONTROLLER_CLASS', $name), 404);
+        }
+
         $config['base_path'] = JPATH_ADMINISTRATOR . '/components/' . $this->option;
         $client              = 'Administrator';
 
