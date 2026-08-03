@@ -68,13 +68,8 @@ class Dispatcher extends ComponentDispatcher
     {
         $user = $this->app->getIdentity();
 
-        // The site applies no permission of its own, so the component applies its own. A translator
-        // works from the site alone, so editing the translations is enough and access to the
-        // administration interface is not required.
-        if (
-            !$user->authorise('core.manage', $this->option)
-            && !$user->authorise('core.edit', $this->option)
-        ) {
+        // Core checks component access in the administrator only, so the site checks it here.
+        if (!$user->authorise('core.edit', $this->option)) {
             throw new NotAllowed($this->app->getLanguage()->_('JERROR_ALERTNOAUTHOR'), 403);
         }
     }
