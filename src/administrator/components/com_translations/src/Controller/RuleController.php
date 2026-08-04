@@ -25,4 +25,22 @@ use Joomla\CMS\MVC\Controller\FormController;
  */
 class RuleController extends FormController
 {
+    /**
+     * Proxy for getModel.
+     *
+     * The prefix is set because a model is otherwise looked for under the name of the running
+     * application, and the models all live in the administrator.
+     *
+     * @param   string  $name    The model name. Optional.
+     * @param   string  $prefix  The class prefix. Optional.
+     * @param   array   $config  Configuration array for the model. Optional.
+     *
+     * @return  \Joomla\CMS\MVC\Model\BaseDatabaseModel  The model.
+     *
+     * @since   0.9.0
+     */
+    public function getModel($name = 'Rule', $prefix = 'Administrator', $config = ['ignore_request' => true])
+    {
+        return parent::getModel($name, $prefix, $config);
+    }
 }

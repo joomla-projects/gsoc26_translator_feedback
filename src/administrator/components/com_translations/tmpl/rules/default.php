@@ -23,9 +23,15 @@ HTMLHelper::_('behavior.multiselect');
 $user      = Factory::getApplication()->getIdentity();
 $listOrder = $this->escape($this->state->get('list.ordering'));
 $listDirn  = $this->escape($this->state->get('list.direction'));
-$saveOrder = $listOrder === 'a.ordering';
 $canChange = $user->authorise('core.edit.state', 'com_translations');
 $canEdit   = $user->authorise('core.edit', 'com_translations');
+$canCreate = $user->authorise('core.create', 'com_translations');
+$canDelete = $user->authorise('core.delete', 'com_translations');
+$inTrash   = (int) $this->state->get('filter.published') === -2;
+
+// Manual ordering is not read when the rules are retrieved, so the site leaves the drag column out.
+$showOrdering = !$this->isSite;
+$saveOrder    = $showOrdering && $listOrder === 'a.ordering';
 
 $saveOrderingUrl = '';
 
@@ -39,6 +45,58 @@ if ($saveOrder && !empty($this->items)) {
     <div class="row">
         <div class="col-md-12">
             <div id="j-main-container" class="j-main-container">
+                <?php // The administrator carries these actions in its toolbar, which the site does not render. ?>
+                <?php if ($this->isSite) : ?>
+                    <div class="d-grid gap-2 d-sm-flex mb-3">
+                        <?php if ($canCreate) : ?>
+                            <joomla-toolbar-button task="rule.add" form="adminForm">
+                                <button type="button" class="btn btn-primary">
+                                    <span class="icon-plus" aria-hidden="true"></span>
+                                    <?php echo Text::_('COM_TRANSLATIONS_RULE_NEW'); ?>
+                                </button>
+                            </joomla-toolbar-button>
+                        <?php endif; ?>
+
+                        <?php if ($canChange) : ?>
+                            <joomla-toolbar-button task="rules.publish" form="adminForm" list-selection>
+                                <button type="button" class="btn btn-secondary">
+                                    <span class="icon-publish" aria-hidden="true"></span>
+                                    <?php echo Text::_('COM_TRANSLATIONS_RULES_PUBLISH'); ?>
+                                </button>
+                            </joomla-toolbar-button>
+                            <joomla-toolbar-button task="rules.unpublish" form="adminForm" list-selection>
+                                <button type="button" class="btn btn-secondary">
+                                    <span class="icon-unpublish" aria-hidden="true"></span>
+                                    <?php echo Text::_('COM_TRANSLATIONS_RULES_UNPUBLISH'); ?>
+                                </button>
+                            </joomla-toolbar-button>
+
+                            <?php if (!$inTrash) : ?>
+                                <joomla-toolbar-button task="rules.trash" form="adminForm" list-selection>
+                                    <button type="button" class="btn btn-secondary">
+                                        <span class="icon-trash" aria-hidden="true"></span>
+                                        <?php echo Text::_('COM_TRANSLATIONS_RULES_TRASH'); ?>
+                                    </button>
+                                </joomla-toolbar-button>
+                            <?php endif; ?>
+                        <?php endif; ?>
+
+                        <?php if ($inTrash && $canDelete) : ?>
+                            <?php // The confirmation dialog reads these from the JavaScript language store. ?>
+                            <?php Text::script('WARNING'); ?>
+                            <?php Text::script('JYES'); ?>
+                            <?php Text::script('JNO'); ?>
+                            <joomla-toolbar-button task="rules.delete" form="adminForm" list-selection
+                                confirm-message="<?php echo $this->escape(Text::_('JGLOBAL_CONFIRM_DELETE')); ?>">
+                                <button type="button" class="btn btn-danger">
+                                    <span class="icon-delete" aria-hidden="true"></span>
+                                    <?php echo Text::_('COM_TRANSLATIONS_RULES_EMPTY_TRASH'); ?>
+                                </button>
+                            </joomla-toolbar-button>
+                        <?php endif; ?>
+                    </div>
+                <?php endif; ?>
+
                 <?php echo LayoutHelper::render('joomla.searchtools.default', ['view' => $this]); ?>
 
                 <?php if (empty($this->items)) : ?>
@@ -58,9 +116,11 @@ if ($saveOrder && !empty($this->items)) {
                                 <td class="w-1 text-center">
                                     <?php echo HTMLHelper::_('grid.checkall'); ?>
                                 </td>
-                                <th scope="col" class="w-1 text-center d-none d-md-table-cell">
-                                    <?php echo HTMLHelper::_('searchtools.sort', '', 'a.ordering', $listDirn, $listOrder, null, 'asc', 'JGRID_HEADING_ORDERING', 'icon-sort'); ?>
-                                </th>
+                                <?php if ($showOrdering) : ?>
+                                    <th scope="col" class="w-1 text-center d-none d-md-table-cell">
+                                        <?php echo HTMLHelper::_('searchtools.sort', '', 'a.ordering', $listDirn, $listOrder, null, 'asc', 'JGRID_HEADING_ORDERING', 'icon-sort'); ?>
+                                    </th>
+                                <?php endif; ?>
                                 <th scope="col" class="w-1 text-center">
                                     <?php echo HTMLHelper::_('searchtools.sort', 'JSTATUS', 'a.state', $listDirn, $listOrder); ?>
                                 </th>
@@ -89,22 +149,24 @@ if ($saveOrder && !empty($this->items)) {
                                     <td class="text-center">
                                         <?php echo HTMLHelper::_('grid.id', $i, $item->id, false, 'cid', 'cb', $item->rule_name); ?>
                                     </td>
-                                    <td class="text-center d-none d-md-table-cell">
-                                        <?php
-                                        $iconClass = '';
-                                        if (!$canReorder) {
-                                            $iconClass = ' inactive';
-                                        } elseif (!$saveOrder) {
-                                            $iconClass = ' inactive" title="' . Text::_('JORDERINGDISABLED');
-                                        }
-                                        ?>
-                                        <span class="sortable-handler<?php echo $iconClass; ?>">
-                                            <span class="icon-ellipsis-v" aria-hidden="true"></span>
-                                        </span>
-                                        <?php if ($canReorder && $saveOrder) : ?>
-                                            <input type="text" name="order[]" size="5" value="<?php echo (int) $item->ordering; ?>" class="width-20 text-area-order hidden">
-                                        <?php endif; ?>
-                                    </td>
+                                    <?php if ($showOrdering) : ?>
+                                        <td class="text-center d-none d-md-table-cell">
+                                            <?php
+                                            $iconClass = '';
+                                            if (!$canReorder) {
+                                                $iconClass = ' inactive';
+                                            } elseif (!$saveOrder) {
+                                                $iconClass = ' inactive" title="' . Text::_('JORDERINGDISABLED');
+                                            }
+                                            ?>
+                                            <span class="sortable-handler<?php echo $iconClass; ?>">
+                                                <span class="icon-ellipsis-v" aria-hidden="true"></span>
+                                            </span>
+                                            <?php if ($canReorder && $saveOrder) : ?>
+                                                <input type="text" name="order[]" size="5" value="<?php echo (int) $item->ordering; ?>" class="width-20 text-area-order hidden">
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endif; ?>
                                     <td class="text-center">
                                         <?php echo HTMLHelper::_('jgrid.published', $item->state, $i, 'rules.', $canChange && $canCheckin, 'cb'); ?>
                                     </td>

@@ -14,6 +14,7 @@ namespace Joomla\Component\Translations\Administrator\View\Rules;
 \defined('_JEXEC') or die;
 // phpcs:enable PSR1.Files.SideEffects
 
+use Joomla\CMS\Factory;
 use Joomla\CMS\Helper\ContentHelper;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\View\HtmlView as BaseHtmlView;
@@ -68,6 +69,14 @@ class HtmlView extends BaseHtmlView
     public $activeFilters;
 
     /**
+     * Whether the view is rendered in the site, where there is no toolbar to carry the actions.
+     *
+     * @var    boolean
+     * @since  0.9.0
+     */
+    public $isSite = false;
+
+    /**
      * Display the view.
      *
      * @param   string|null  $tpl  The name of the template file to parse.
@@ -86,6 +95,12 @@ class HtmlView extends BaseHtmlView
         $this->state         = $model->getState();
         $this->filterForm    = $model->getFilterForm();
         $this->activeFilters = $model->getActiveFilters();
+        $this->isSite        = Factory::getApplication()->isClient('site');
+
+        // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
+        if ($this->isSite) {
+            $this->getDocument()->getWebAssetManager()->useScript('webcomponent.toolbar-button');
+        }
 
         $this->addToolbar();
 
