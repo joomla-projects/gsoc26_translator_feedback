@@ -229,12 +229,14 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return;
         }
 
-        // A version row is keyed as "<type alias>.<id>", and an article is versioned under our key for it.
-        $parts       = explode('.', (string) $table->item_id);
-        $sourceId    = (int) array_pop($parts);
-        $contentType = implode('.', $parts);
+        // A version row is keyed as "<type alias>.<id>", under the alias the item's model is
+        // versioned by, so the content type it belongs to is read back from the map.
+        $parts            = explode('.', (string) $table->item_id);
+        $sourceId         = (int) array_pop($parts);
+        $versionTypeAlias = implode('.', $parts);
+        $contentType      = ContentTypesHelper::getContentTypeForVersionTypeAlias($versionTypeAlias);
 
-        if ($contentType !== self::CONTENT_TYPE || $sourceId === 0) {
+        if ($contentType === null || $sourceId === 0) {
             return;
         }
 

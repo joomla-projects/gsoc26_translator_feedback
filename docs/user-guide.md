@@ -24,6 +24,23 @@ The component assumes a **multilingual Joomla site**:
 
 Without a multilingual setup there is nothing to associate translations with.
 
+It also requires **version history** on the content you translate. In each component's
+Options, set **Enable Versions** to *Yes*:
+
+- **Content**, then **Articles**, then **Options**, on the **Editing Layout** tab. This
+  one setting covers articles **and** content categories, because Joomla versions a
+  category under the component that owns it.
+- **Tags**, then **Options**, for tags.
+
+Both are already on after a standard Joomla installation, so this is usually a check
+rather than a change.
+
+The component records which version of a source item each translation was made from,
+and compares it against the source's current version to notice when an original has been
+edited since it was translated. Such a translation is sent back for re-translation. With
+versions turned off Joomla stores no history, an edited original is never noticed, and
+its translations stay out of date without telling anyone.
+
 ## Setting the source language
 
 The source language is a component setting (Options), defaulting to `en-GB`. Set it to
