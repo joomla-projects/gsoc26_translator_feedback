@@ -25,7 +25,7 @@ The file is a single object with one `contentTypes` member, keyed by content typ
 }
 ```
 
-The key is the content type **alias**, `extension.typeName` (for example
+Each key is the **content type key**, `extension.typeName` (for example
 `com_content.article`). The same string is stored as `content_type` in
 `#__translations_queue` and is the value passed to `TranslationModel::translate()`, so
 one string identifies the type everywhere.
@@ -57,6 +57,24 @@ versioning and other behaviours run as for a hand-made item.
 
 **`table`** (string, required) - the database table the source item is read from and
 the draft is stored in, for example `#__content`.
+
+**`versionTypeAlias`** (string, optional) - the type alias Joomla files this type's
+version history under in `#__history`, for example `com_content.category`. It is not
+always the same as our key for the content type, because a category is versioned under
+the extension that owns it: a com_content category is versioned as
+`com_content.category` while our key for it is `com_categories.category`. The alias is
+read when recording which version of a source item a translation was made from, and
+again when a newly stored version sends that translation back for re-translation.
+
+Omit it for a type Joomla does not version. Menu items have no version history at all,
+so their entry carries no version type alias, no version is recorded for them and a
+stored version can never match them.
+
+The setting that enables version history belongs to the extension named in the alias and
+not to the managing component: Joomla reads `save_history` from the alias's extension, so
+a com_content category follows com_content's **Enable Versions** setting, the same one
+that governs articles. Having it on is a prerequisite for the component, see
+[user-guide.md](user-guide.md).
 
 **`stateField`** (string, required) - the publish-state column, set to `0` so the draft
 is unpublished until a translator approves it. It differs per type (`state` for
