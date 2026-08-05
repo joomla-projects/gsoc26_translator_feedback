@@ -850,6 +850,7 @@ class TranslationModel extends BaseDatabaseModel
      * @param   string   $targetLanguage  The target language code.
      * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
      * @param   array    $machineDraft    The draft's translatable values as stored, keyed by field.
+     * @param   array    $properties      The content type's properties from the map.
      *
      * @return  void
      *
@@ -958,7 +959,7 @@ class TranslationModel extends BaseDatabaseModel
      * versions gives 0, which nothing compares as newer than.
      *
      * @param   integer  $sourceItemId  The source item id.
-     * @param   array    $properties    The content type's properties.
+     * @param   array    $properties    The content type's properties from the map.
      *
      * @return  integer  The version id, or 0 when the item has none.
      *
