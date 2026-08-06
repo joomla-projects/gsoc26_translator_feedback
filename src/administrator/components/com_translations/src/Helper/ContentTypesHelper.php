@@ -65,6 +65,30 @@ class ContentTypesHelper
     }
 
     /**
+     * Read the content type key versioned under a Joomla type alias.
+     *
+     * Joomla keys a version by the type alias the item's model is versioned under, which is not
+     * always our key for that content type: a category is versioned under the extension owning it.
+     * A content type Joomla does not version carries no version type alias, so nothing matches it.
+     *
+     * @param   string  $versionTypeAlias  The type alias a version is stored under.
+     *
+     * @return  string|null  The content type key, or null when no mapped type is versioned under the alias.
+     *
+     * @since   0.9.0
+     */
+    public static function getContentTypeForVersionTypeAlias(string $versionTypeAlias): ?string
+    {
+        foreach (self::getMap() as $contentType => $properties) {
+            if (($properties['versionTypeAlias'] ?? null) === $versionTypeAlias) {
+                return (string) $contentType;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Load the content type map once from contenttypes.json.
      *
      * @return  array  The map keyed by content type key.

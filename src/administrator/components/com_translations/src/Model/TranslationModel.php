@@ -81,7 +81,7 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         $machineDraft = $this->createDraft($sourceItem, $targetLanguage, $contentType, $application, $properties);
-        $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType, $machineDraft);
+        $this->markReadyForReview($sourceItemId, $targetLanguage, $contentType, $machineDraft, $properties);
     }
 
     /**
@@ -850,18 +850,19 @@ class TranslationModel extends BaseDatabaseModel
      * @param   string   $targetLanguage  The target language code.
      * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
      * @param   array    $machineDraft    The draft's translatable values as stored, keyed by field.
+     * @param   array    $properties      The content type's properties from the map.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    private function markReadyForReview(int $sourceItemId, string $targetLanguage, string $contentType, array $machineDraft): void
+    private function markReadyForReview(int $sourceItemId, string $targetLanguage, string $contentType, array $machineDraft, array $properties): void
     {
         $queueId     = $this->getOrCreateQueueId($sourceItemId, $contentType);
         $reviewState = 'review';
 
         // Record the version translated from, so a later edit of the source invalidates this translation.
-        $versionId = $this->sourceVersionId($sourceItemId, $contentType);
+        $versionId = $this->sourceVersionId($sourceItemId, $properties);
 
         // Keep the translation as produced, to pair against the translator's correction on approval.
         $machineDraftJson = (string) json_encode($machineDraft);
@@ -958,17 +959,23 @@ class TranslationModel extends BaseDatabaseModel
      * versions gives 0, which nothing compares as newer than.
      *
      * @param   integer  $sourceItemId  The source item id.
-     * @param   string   $contentType   The content type key, e.g. 'com_content.article'.
+     * @param   array    $properties    The content type's properties from the map.
      *
      * @return  integer  The version id, or 0 when the item has none.
      *
      * @since   0.7.0
      */
-    private function sourceVersionId(int $sourceItemId, string $contentType): int
+    private function sourceVersionId(int $sourceItemId, array $properties): int
     {
-        // Versions are keyed by the type alias the item is versioned under, which can differ from our
-        // key (a category is versioned under the extension owning it, com_content.category).
-        $itemId = $contentType . '.' . $sourceItemId;
+        // Joomla keys a version by the type alias the item is versioned under, which is not always
+        // our key for the content type. A type Joomla does not version carries none.
+        $versionTypeAlias = (string) ($properties['versionTypeAlias'] ?? '');
+
+        if ($versionTypeAlias === '') {
+            return 0;
+        }
+
+        $itemId = $versionTypeAlias . '.' . $sourceItemId;
 
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
