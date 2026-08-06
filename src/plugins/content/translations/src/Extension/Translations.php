@@ -21,6 +21,7 @@ use Joomla\CMS\Event\Model\AfterChangeStateEvent;
 use Joomla\CMS\Event\Model\AfterDeleteEvent;
 use Joomla\CMS\Event\Model\AfterSaveEvent;
 use Joomla\CMS\Event\Model\BeforeDeleteEvent;
+use Joomla\CMS\Event\Model\BeforeSaveEvent;
 use Joomla\CMS\Event\Model\PrepareDataEvent;
 use Joomla\CMS\Event\Model\PrepareFormEvent;
 use Joomla\CMS\Event\Table\AfterStoreEvent;
@@ -40,7 +41,7 @@ use Joomla\Event\SubscriberInterface;
  * Content plugin for the Translations component. Adds the "no need for translation"
  * toggle to the article form, cascades a source item's trash or delete to its translated
  * items and the queue rows that track them, for every managed content type, and sends a
- * source item's translations back to pending once a new version of it is stored.
+ * source item's translations back to pending once the source has changed.
  *
  * @since  0.3.0
  */
@@ -91,6 +92,15 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private array $capturedCells = [];
 
     /**
+     * Queue row ids captured per menu item id during onContentBeforeSave, while the stored title is
+     * still readable, so onContentAfterSave can invalidate once the save has succeeded.
+     *
+     * @var    array<int, int>
+     * @since  0.9.0
+     */
+    private array $capturedTitleChanges = [];
+
+    /**
      * Returns the events this subscriber listens to.
      *
      * @return  array
@@ -102,6 +112,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         return [
             'onContentPrepareData'  => 'onContentPrepareData',
             'onContentPrepareForm'  => 'onContentPrepareForm',
+            'onContentBeforeSave'   => 'onContentBeforeSave',
             'onContentAfterSave'    => 'onContentAfterSave',
             'onContentChangeState'  => 'onContentChangeState',
             'onCategoryChangeState' => 'onCategoryChangeState',
@@ -180,7 +191,55 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Persist the toggle to the article's queue row when a source-language article is saved.
+     * Capture a source menu item whose title is about to change.
+     *
+     * A menu item is not versionable, so the title is the change signal: it is the only field
+     * translated for this type. The stored title is readable only until the row is written, and the
+     * save can still fail after this event, so the comparison is made here and acted on afterwards.
+     *
+     * @param   BeforeSaveEvent  $event  The event.
+     *
+     * @return  void
+     *
+     * @since   0.9.0
+     */
+    public function onContentBeforeSave(BeforeSaveEvent $event): void
+    {
+        $contentType = $event->getContext();
+
+        if ($contentType !== 'com_menus.item' || $event->getIsNew()) {
+            return;
+        }
+
+        $properties = $this->managedProperties($contentType);
+
+        if ($properties === null) {
+            return;
+        }
+
+        $item   = $event->getItem();
+        $itemId = (int) $item->id;
+
+        // The queue holds source items only, so saving one of our translations finds nothing.
+        $queueId = $this->queueId($itemId, $contentType);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        // The table is bound with the submitted data before this event, so its title is the new one.
+        $storedTitle = $this->storedTitle($itemId, (string) ($properties['table'] ?? ''));
+
+        if ($storedTitle === (string) $item->title) {
+            return;
+        }
+
+        $this->capturedTitleChanges[$itemId] = $queueId;
+    }
+
+    /**
+     * Persist the toggle to the article's queue row when a source-language article is saved, and
+     * invalidate a source menu item's translations when its title changed.
      *
      * @param   AfterSaveEvent  $event  The event.
      *
@@ -190,7 +249,15 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentAfterSave(AfterSaveEvent $event): void
     {
-        if ($event->getContext() !== 'com_content.article') {
+        $contentType = $event->getContext();
+
+        if ($contentType === 'com_menus.item') {
+            $this->invalidateRenamedMenuItem((int) $event->getItem()->id);
+
+            return;
+        }
+
+        if ($contentType !== 'com_content.article') {
             return;
         }
 
@@ -660,18 +727,20 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     /**
      * Mark a source item's translations as needing re-translation.
      *
-     * Only translations made from an older version go back to pending. The version is compared as
-     * newer rather than different, because a version row is also stored without a new version being
-     * added: for a version note, and for the keep forever toggle, which carries the toggled row's id.
+     * For a versioned type only translations made from an older version go back to pending. The
+     * version is compared as newer rather than different, because a version row is also stored
+     * without a new version being added: for a version note, and for the keep forever toggle, which
+     * carries the toggled row's id.
      *
-     * @param   integer  $queueId    The source item's queue row id.
-     * @param   integer  $versionId  The version just stored for the source.
+     * @param   integer       $queueId    The source item's queue row id.
+     * @param   integer|null  $versionId  The version just stored for the source, or null when the
+     *                                    content type has no version history.
      *
      * @return  void
      *
      * @since   0.7.0
      */
-    private function invalidateTranslations(int $queueId, int $versionId): void
+    private function invalidateTranslations(int $queueId, ?int $versionId = null): void
     {
         $pendingState = 'pending';
         $staleStates  = ['review', 'approved'];
@@ -681,13 +750,71 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             ->update($db->quoteName('#__translations_queue_states'))
             ->set($db->quoteName('translation_state') . ' = :pending')
             ->where($db->quoteName('queue_id') . ' = :queueId')
-            ->where($db->quoteName('source_version_id') . ' < :versionId')
             ->whereIn($db->quoteName('translation_state'), $staleStates, ParameterType::STRING)
             ->bind(':pending', $pendingState, ParameterType::STRING)
-            ->bind(':queueId', $queueId, ParameterType::INTEGER)
-            ->bind(':versionId', $versionId, ParameterType::INTEGER);
+            ->bind(':queueId', $queueId, ParameterType::INTEGER);
+
+        // A type with no version history has nothing to compare, so every stale cell goes back.
+        if ($versionId !== null) {
+            $query->where($db->quoteName('source_version_id') . ' < :versionId')
+                ->bind(':versionId', $versionId, ParameterType::INTEGER);
+        }
+
         $db->setQuery($query);
         $db->execute();
+    }
+
+    /**
+     * Send a source menu item's translations back to pending when its title changed during the save.
+     *
+     * @param   integer  $itemId  The menu item id.
+     *
+     * @return  void
+     *
+     * @since   0.9.0
+     */
+    private function invalidateRenamedMenuItem(int $itemId): void
+    {
+        if (!isset($this->capturedTitleChanges[$itemId])) {
+            return;
+        }
+
+        $queueId = $this->capturedTitleChanges[$itemId];
+        unset($this->capturedTitleChanges[$itemId]);
+
+        // Never let a failure here break the save this is running inside.
+        try {
+            $this->invalidateTranslations($queueId);
+        } catch (\Throwable $e) {
+            Log::add(
+                \sprintf('Could not invalidate translations of menu item %d: %s', $itemId, $e->getMessage()),
+                Log::WARNING,
+                'translations'
+            );
+        }
+    }
+
+    /**
+     * The title a source item currently has in the database.
+     *
+     * @param   integer  $itemId  The source item id.
+     * @param   string   $table   The content type's table.
+     *
+     * @return  string
+     *
+     * @since   0.9.0
+     */
+    private function storedTitle(int $itemId, string $table): string
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('title'))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName('id') . ' = :itemId')
+            ->bind(':itemId', $itemId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return (string) $db->loadResult();
     }
 
     /**
