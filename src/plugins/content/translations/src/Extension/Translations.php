@@ -151,9 +151,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Default a new article's language to the source language, and reflect the queue flag on the toggle.
+     * Default a new item's language to the source language, and reflect the queue flag on the article toggle.
      *
-     * A new article has no language yet, so it is set to the source language here. For an existing article
+     * A new item has no language yet, so it is set to the source language here. For an existing article
      * the displayed toggle value is set from the queue before the form binds the stored attribs (the form
      * binds after onContentPrepareForm runs), so it survives even after the flag was cleared from the grid.
      *
@@ -165,25 +165,26 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentPrepareData(PrepareDataEvent $event): void
     {
-        if ($event->getContext() !== 'com_content.article') {
+        $contentType = $event->getContext();
+        $properties  = $this->managedProperties($contentType);
+        $data        = $event->getData();
+
+        if ($properties === null || !\is_object($data)) {
             return;
         }
 
-        $data = $event->getData();
-
-        if (!\is_object($data)) {
-            return;
-        }
-
-        // A new article has no language yet; default it to the source language.
-        if (empty($data->id) && (string) ($data->language ?? '') === '') {
-            $data->language = $this->getSourceLanguage();
+        // A new item has no language yet; default it to the source language.
+        if (empty($data->id)) {
+            if ((string) ($data->language ?? '') === '' && $this->isManagedItem($data, $contentType, $properties)) {
+                $data->language = $this->getSourceLanguage();
+            }
 
             return;
         }
 
-        // The edit form supplies the item with attribs as an array; leave other shapes alone.
-        if (empty($data->id) || !\is_array($data->attribs ?? null)) {
+        // Only articles carry the toggle, and the edit form supplies the item with attribs as an
+        // array; leave other shapes alone.
+        if ($contentType !== 'com_content.article' || !\is_array($data->attribs ?? null)) {
             return;
         }
 
@@ -498,6 +499,37 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         return \in_array($contentType, ContentTypesHelper::getContentTypes(), true)
             ? ContentTypesHelper::getProperties($contentType)
             : null;
+    }
+
+    /**
+     * Whether an item falls in the part of its content type this component translates.
+     *
+     * A category is shared by every extension that uses categories, so only the extension the map
+     * names is ours. A menu item is associable on the site client alone, so an administrator one is
+     * never translated.
+     *
+     * @param   object  $data         The form data.
+     * @param   string  $contentType  The content type key.
+     * @param   array   $properties   The content type's properties.
+     *
+     * @return  boolean
+     *
+     * @since   0.9.0
+     */
+    private function isManagedItem(object $data, string $contentType, array $properties): bool
+    {
+        if (
+            isset($properties['limitToExtension'])
+            && (string) ($data->extension ?? '') !== $properties['limitToExtension']
+        ) {
+            return false;
+        }
+
+        if ($contentType === 'com_menus.item' && (int) ($data->client_id ?? 0) !== 0) {
+            return false;
+        }
+
+        return true;
     }
 
     /**
