@@ -175,7 +175,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         // A new item has no language yet; default it to the source language.
         if (empty($data->id)) {
-            if ((string) ($data->language ?? '') === '' && $this->isManagedItem($data, $contentType, $properties)) {
+            if ((string) ($data->language ?? '') === '' && $this->isManagedItem($data, $properties)) {
                 $data->language = $this->getSourceLanguage();
             }
 
@@ -508,15 +508,14 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      * names is ours. A menu item is associable on the site client alone, so an administrator one is
      * never translated.
      *
-     * @param   object  $data         The form data.
-     * @param   string  $contentType  The content type key.
-     * @param   array   $properties   The content type's properties.
+     * @param   object  $data        The form data.
+     * @param   array   $properties  The content type's properties.
      *
      * @return  boolean
      *
      * @since   0.9.0
      */
-    private function isManagedItem(object $data, string $contentType, array $properties): bool
+    private function isManagedItem(object $data, array $properties): bool
     {
         if (
             isset($properties['limitToExtension'])
@@ -525,7 +524,10 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return false;
         }
 
-        if ($contentType === 'com_menus.item' && (int) ($data->client_id ?? 0) !== 0) {
+        if (
+            isset($properties['limitToClient'])
+            && (int) ($data->client_id ?? 0) !== (int) $properties['limitToClient']
+        ) {
             return false;
         }
 

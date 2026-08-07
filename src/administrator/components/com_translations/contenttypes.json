@@ -69,6 +69,7 @@
             "model": "Item",
             "table": "#__menu",
             "context_associations": "com_menus.item",
+            "limitToClient": 0,
             "draftCopyFields": ["link", "type", "component_id", "browserNav", "access", "img", "template_style_id", "params"],
             "stateField": "published",
             "draftForceFields": { "home": 0, "parent_id": 1 },
