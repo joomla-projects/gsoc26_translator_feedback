@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <form>
-	<fields name="attribs">
+	<fields name="com_translations">
 		<fieldset name="translations" label="PLG_CONTENT_TRANSLATIONS_FIELDSET_LABEL">
 			<field
 				name="no_need_for_translation"
