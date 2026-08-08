@@ -39,7 +39,7 @@ use Joomla\Event\SubscriberInterface;
 
 /**
  * Content plugin for the Translations component. Adds the "no need for translation"
- * toggle to the article form, cascades a source item's trash or delete to its translated
+ * toggle to a source item's form, cascades a source item's trash or delete to its translated
  * items and the queue rows that track them, for every managed content type, and sends a
  * source item's translations back to pending once the source has changed.
  *
@@ -58,15 +58,16 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     protected $autoloadLanguage = true;
 
     /**
-     * Content type stored in #__translations_queue for articles (matches the component).
+     * The form group the toggle is submitted under. The queue holds the flag, so the group is
+     * named for this component and the item's own table never sees it.
      *
      * @var    string
-     * @since  0.3.0
+     * @since  0.11.0
      */
-    private const CONTENT_TYPE = 'com_content.article';
+    private const GROUP = 'com_translations';
 
     /**
-     * The form field this plugin adds to the article form.
+     * The form field this plugin adds to a source item's form.
      *
      * @var    string
      * @since  0.3.0
@@ -101,6 +102,16 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private array $capturedTitleChanges = [];
 
     /**
+     * The toggle value captured during onContentBeforeSave, for the models that dispatch the after
+     * save event without the submitted data. A new item has no id yet at that point, so this cannot
+     * be keyed by id the way a title change is.
+     *
+     * @var    integer|null
+     * @since  0.11.0
+     */
+    private ?int $capturedFlag = null;
+
+    /**
      * Returns the events this subscriber listens to.
      *
      * @return  array
@@ -123,7 +134,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Add the "no need for translation" toggle to the source-language article form.
+     * Add the "no need for translation" toggle to a source-language item's form.
      *
      * @param   PrepareFormEvent  $event  The event.
      *
@@ -135,11 +146,11 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     {
         $form = $event->getForm();
 
-        if ($form->getName() !== 'com_content.article') {
+        if (ContentTypesHelper::getContentTypeForOptOutForm($form->getName()) === null) {
             return;
         }
 
-        // Load the toggle for source-language articles and new ones (language not set yet).
+        // Load the toggle for source-language items and new ones (language not set yet).
         $data     = $event->getData();
         $language = (string) (\is_object($data) ? ($data->language ?? '') : ($data['language'] ?? ''));
 
@@ -151,11 +162,11 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Default a new item's language to the source language, and reflect the queue flag on the article toggle.
+     * Default a new item's language to the source language, and show the queue's flag on the toggle.
      *
-     * A new item has no language yet, so it is set to the source language here. For an existing article
-     * the displayed toggle value is set from the queue before the form binds the stored attribs (the form
-     * binds after onContentPrepareForm runs), so it survives even after the flag was cleared from the grid.
+     * A new item has no language yet, so it is set to the source language here. The queue holds the flag,
+     * so an existing item's toggle is filled from it rather than from anything stored on the item, which
+     * keeps the form right after the flag was cleared from the grid.
      *
      * @param   PrepareDataEvent  $event  The event.
      *
@@ -182,17 +193,18 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return;
         }
 
-        // Only articles carry the toggle, and the edit form supplies the item with attribs as an
-        // array; leave other shapes alone.
-        if ($contentType !== 'com_content.article' || !\is_array($data->attribs ?? null)) {
+        if (!isset($properties['optOutForm'])) {
             return;
         }
 
-        $data->attribs[self::FIELD] = $this->isFlagged((int) $data->id) ? 1 : 0;
+        $data->{self::GROUP} = [self::FIELD => $this->isFlagged((int) $data->id, $contentType) ? 1 : 0];
     }
 
     /**
-     * Capture a source menu item whose title is about to change.
+     * Capture the submitted toggle, and a source menu item whose title is about to change.
+     *
+     * The tag and menu item models dispatch the after save event without the submitted data, so the
+     * toggle is read here, where every model still passes it.
      *
      * A menu item is not versionable, so the title is the change signal: it is the only field
      * translated for this type. The stored title is readable only until the row is written, and the
@@ -206,15 +218,24 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentBeforeSave(BeforeSaveEvent $event): void
     {
-        $contentType = $event->getContext();
+        $this->capturedFlag = null;
 
-        if ($contentType !== 'com_menus.item' || $event->getIsNew()) {
+        $contentType = $event->getContext();
+        $properties  = $this->managedProperties($contentType);
+
+        if ($properties === null) {
             return;
         }
 
-        $properties = $this->managedProperties($contentType);
+        if (isset($properties['optOutForm'])) {
+            $data = $event->getData();
 
-        if ($properties === null) {
+            if (\is_array($data[self::GROUP] ?? null)) {
+                $this->capturedFlag = (int) ($data[self::GROUP][self::FIELD] ?? 0);
+            }
+        }
+
+        if ($contentType !== 'com_menus.item' || $event->getIsNew()) {
             return;
         }
 
@@ -239,7 +260,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Persist the toggle to the article's queue row when a source-language article is saved, and
+     * Persist the toggle to the item's queue row when a source-language item is saved, and
      * invalidate a source menu item's translations when its title changed.
      *
      * @param   AfterSaveEvent  $event  The event.
@@ -254,27 +275,56 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         if ($contentType === 'com_menus.item') {
             $this->invalidateRenamedMenuItem((int) $event->getItem()->id);
+        }
 
+        $properties = $this->managedProperties($contentType);
+
+        if ($properties === null || !isset($properties['optOutForm'])) {
             return;
         }
 
-        if ($contentType !== 'com_content.article') {
-            return;
-        }
-
-        $article = $event->getItem();
+        $item = $event->getItem();
 
         // Only source-language originals are tracked in the queue.
-        if ((string) ($article->language ?? '') !== $this->getSourceLanguage()) {
+        if ((string) ($item->language ?? '') !== $this->getSourceLanguage()) {
             return;
         }
 
-        // The toggle lives in the article's attribs group, so it arrives nested under 'attribs'.
-        $data           = $event->getData();
-        $attribs        = $data['attribs'] ?? [];
-        $doNotTranslate = (int) (\is_array($attribs) ? ($attribs[self::FIELD] ?? 0) : 0);
+        $doNotTranslate = $this->submittedFlag($event);
 
-        $this->storeFlag((int) $article->id, $doNotTranslate);
+        // Only a form the toggle was added to submits it, so its absence means the item was saved
+        // from a form without the toggle and the stored flag stands.
+        if ($doNotTranslate === null) {
+            return;
+        }
+
+        $this->storeFlag((int) $item->id, $contentType, $doNotTranslate);
+    }
+
+    /**
+     * The toggle value submitted with the save, or null when the save carried none.
+     *
+     * @param   AfterSaveEvent  $event  The event.
+     *
+     * @return  integer|null
+     *
+     * @since   0.11.0
+     */
+    private function submittedFlag(AfterSaveEvent $event): ?int
+    {
+        // Consume the capture, so a later save cannot write it against another item.
+        $captured           = $this->capturedFlag;
+        $this->capturedFlag = null;
+
+        $data = $event->getData();
+
+        if (\is_array($data[self::GROUP] ?? null)) {
+            return (int) ($data[self::GROUP][self::FIELD] ?? 0);
+        }
+
+        // The tag and menu item models dispatch this event without the submitted data, so the value
+        // is the one read before the save.
+        return $captured;
     }
 
     /**
@@ -558,19 +608,17 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Whether the article is currently flagged "no need for translation".
+     * Whether the item is currently flagged "no need for translation".
      *
-     * @param   integer  $articleId  The article id.
+     * @param   integer  $itemId       The source item id.
+     * @param   string   $contentType  The content type key.
      *
      * @return  boolean
      *
      * @since   0.3.0
      */
-    private function isFlagged(int $articleId): bool
+    private function isFlagged(int $itemId, string $contentType): bool
     {
-        // Bound parameters are passed by reference, so the constant needs a variable.
-        $contentType = self::CONTENT_TYPE;
-
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
             ->select($db->quoteName('do_not_translate'))
@@ -578,26 +626,27 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             ->where($db->quoteName('content_type') . ' = :contentType')
             ->where($db->quoteName('content_id') . ' = :contentId')
             ->bind(':contentType', $contentType, ParameterType::STRING)
-            ->bind(':contentId', $articleId, ParameterType::INTEGER);
+            ->bind(':contentId', $itemId, ParameterType::INTEGER);
         $db->setQuery($query);
 
         return (bool) $db->loadResult();
     }
 
     /**
-     * Store the flag on the article's queue row, creating the row only to record an opt-out.
+     * Store the flag on the item's queue row, creating the row only to record an opt-out.
      *
-     * @param   integer  $articleId       The article id.
+     * @param   integer  $itemId          The source item id.
+     * @param   string   $contentType     The content type key.
      * @param   integer  $doNotTranslate  1 to opt out of translation, 0 to allow it.
      *
      * @return  void
      *
      * @since   0.3.0
      */
-    private function storeFlag(int $articleId, int $doNotTranslate): void
+    private function storeFlag(int $itemId, string $contentType, int $doNotTranslate): void
     {
         $db      = $this->getDatabase();
-        $queueId = $this->queueId($articleId, self::CONTENT_TYPE);
+        $queueId = $this->queueId($itemId, $contentType);
 
         if ($queueId !== null) {
             $row = (object) [
@@ -615,8 +664,8 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         }
 
         $row = (object) [
-            'content_type'     => self::CONTENT_TYPE,
-            'content_id'       => $articleId,
+            'content_type'     => $contentType,
+            'content_id'       => $itemId,
             'do_not_translate' => 1,
         ];
         $db->insertObject('#__translations_queue', $row);
