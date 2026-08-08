@@ -79,7 +79,8 @@ that governs articles. Having it on is a prerequisite for the component, see
 **`optOutForm`** (string, optional) - the edit form the "no need for translation" toggle is
 added to. Like the version type alias, this is not always our key for the content type: a
 com_content category is edited on `com_categories.categorycom_content` while our key for it
-is `com_categories.category`.
+is `com_categories.category`. Naming the site menu item form also excludes administrator menu
+items, which Joomla edits on `com_menus.item.admin`.
 
 Omit it for a type that is not offered the toggle. The toggle is submitted under a
 `com_translations` form group, and no content table has a column of that name, so the flag is

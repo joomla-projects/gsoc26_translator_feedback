@@ -62,7 +62,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      * named for this component and the item's own table never sees it.
      *
      * @var    string
-     * @since  0.9.0
+     * @since  0.11.0
      */
     private const GROUP = 'com_translations';
 
@@ -100,6 +100,16 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      * @since  0.9.0
      */
     private array $capturedTitleChanges = [];
+
+    /**
+     * The toggle value captured during onContentBeforeSave, for the models that dispatch the after
+     * save event without the submitted data. A new item has no id yet at that point, so this cannot
+     * be keyed by id the way a title change is.
+     *
+     * @var    integer|null
+     * @since  0.11.0
+     */
+    private ?int $capturedFlag = null;
 
     /**
      * Returns the events this subscriber listens to.
@@ -191,7 +201,10 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Capture a source menu item whose title is about to change.
+     * Capture the submitted toggle, and a source menu item whose title is about to change.
+     *
+     * The tag and menu item models dispatch the after save event without the submitted data, so the
+     * toggle is read here, where every model still passes it.
      *
      * A menu item is not versionable, so the title is the change signal: it is the only field
      * translated for this type. The stored title is readable only until the row is written, and the
@@ -205,15 +218,24 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentBeforeSave(BeforeSaveEvent $event): void
     {
-        $contentType = $event->getContext();
+        $this->capturedFlag = null;
 
-        if ($contentType !== 'com_menus.item' || $event->getIsNew()) {
+        $contentType = $event->getContext();
+        $properties  = $this->managedProperties($contentType);
+
+        if ($properties === null) {
             return;
         }
 
-        $properties = $this->managedProperties($contentType);
+        if (isset($properties['optOutForm'])) {
+            $data = $event->getData();
 
-        if ($properties === null) {
+            if (\is_array($data[self::GROUP] ?? null)) {
+                $this->capturedFlag = (int) ($data[self::GROUP][self::FIELD] ?? 0);
+            }
+        }
+
+        if ($contentType !== 'com_menus.item' || $event->getIsNew()) {
             return;
         }
 
@@ -253,8 +275,6 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         if ($contentType === 'com_menus.item') {
             $this->invalidateRenamedMenuItem((int) $event->getItem()->id);
-
-            return;
         }
 
         $properties = $this->managedProperties($contentType);
@@ -270,15 +290,41 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             return;
         }
 
-        // Only a form the toggle was added to submits the group, so its absence means the item
-        // was saved from a form without the toggle and the stored flag stands.
-        $data = $event->getData();
+        $doNotTranslate = $this->submittedFlag($event);
 
-        if (!\is_array($data[self::GROUP] ?? null)) {
+        // Only a form the toggle was added to submits it, so its absence means the item was saved
+        // from a form without the toggle and the stored flag stands.
+        if ($doNotTranslate === null) {
             return;
         }
 
-        $this->storeFlag((int) $item->id, $contentType, (int) ($data[self::GROUP][self::FIELD] ?? 0));
+        $this->storeFlag((int) $item->id, $contentType, $doNotTranslate);
+    }
+
+    /**
+     * The toggle value submitted with the save, or null when the save carried none.
+     *
+     * @param   AfterSaveEvent  $event  The event.
+     *
+     * @return  integer|null
+     *
+     * @since   0.11.0
+     */
+    private function submittedFlag(AfterSaveEvent $event): ?int
+    {
+        // Consume the capture, so a later save cannot write it against another item.
+        $captured           = $this->capturedFlag;
+        $this->capturedFlag = null;
+
+        $data = $event->getData();
+
+        if (\is_array($data[self::GROUP] ?? null)) {
+            return (int) ($data[self::GROUP][self::FIELD] ?? 0);
+        }
+
+        // The tag and menu item models dispatch this event without the submitted data, so the value
+        // is the one read before the save.
+        return $captured;
     }
 
     /**

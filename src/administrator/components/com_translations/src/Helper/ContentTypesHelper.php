@@ -99,7 +99,7 @@ class ContentTypesHelper
      *
      * @return  string|null  The content type key, or null when no mapped type is edited on the form.
      *
-     * @since   0.9.0
+     * @since   0.11.0
      */
     public static function getContentTypeForOptOutForm(string $formName): ?string
     {

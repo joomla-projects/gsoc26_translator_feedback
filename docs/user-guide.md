@@ -75,8 +75,8 @@ use **Save & Train**: the draft is saved and every field you changed is recorded
 ### Marking an item as "no need for translation"
 
 On a source item's edit form, in the Translations tab, a toggle marks the item as one that
-should not be translated. It is available for articles and categories. Marked items
-drop out of the queue (and can be brought back from the queue's filter).
+should not be translated. It is available for articles, categories, tags and site menu
+items. Marked items drop out of the queue (and can be brought back from the queue's filter).
 
 ## What is still in progress
 
