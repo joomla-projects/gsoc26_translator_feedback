@@ -281,6 +281,16 @@ class TranslatorfeedbackModel extends FormModel
                 : $introtext;
         }
 
+        // A model that writes associations rebuilds the group from the data it is given, and com_menus
+        // deletes the group when the data carries none, so hand it the group the draft belongs to.
+        if ((bool) ($properties['associationsByModel'] ?? true)) {
+            $row['associations'] = $this->getAssociationGroup(
+                (int) $item->content_id,
+                (string) ($properties['context_associations'] ?? ''),
+                (string) ($properties['table'] ?? '')
+            );
+        }
+
         return (bool) $model->save($row);
     }
 
