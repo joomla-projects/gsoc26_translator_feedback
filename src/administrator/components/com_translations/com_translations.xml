@@ -5,7 +5,7 @@
     <author>Joomla! Project</author>
     <authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
     <license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-    <version>__DEPLOY_VERSION__</version>
+    <version>0.11.0</version>
     <description>COM_TRANSLATIONS_XML_DESCRIPTION</description>
     <namespace path="src">Joomla\Component\Translations</namespace>
     <scriptfile>script.php</scriptfile>
