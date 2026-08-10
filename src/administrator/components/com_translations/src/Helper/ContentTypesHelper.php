@@ -89,6 +89,30 @@ class ContentTypesHelper
     }
 
     /**
+     * Read the content type edited on a form that carries the "no need for translation" toggle.
+     *
+     * The form name is not always our key for the content type, because a category's form is named
+     * after the extension that owns it. A type that is not offered the toggle names no form, so
+     * nothing matches it.
+     *
+     * @param   string  $formName  The name of the form being prepared.
+     *
+     * @return  string|null  The content type key, or null when no mapped type is edited on the form.
+     *
+     * @since   0.11.0
+     */
+    public static function getContentTypeForOptOutForm(string $formName): ?string
+    {
+        foreach (self::getMap() as $contentType => $properties) {
+            if (($properties['optOutForm'] ?? null) === $formName) {
+                return (string) $contentType;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Load the content type map once from contenttypes.json.
      *
      * @return  array  The map keyed by content type key.
