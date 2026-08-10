@@ -430,9 +430,26 @@ class TranslatorfeedbackModel extends FormModel
         $model      = $this->draftModel($application, $properties);
         $ids        = [(int) $item->translation_item['id']];
 
-        // The managing component runs its own edit-state check, which can refuse a user this view allows.
-        if (!$model->publish($ids, 1)) {
-            throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_PUBLISH_ERROR'));
+        // com_categories builds its change of state event from the request rather than from the rows
+        // it publishes, and the event rejects a null context, so publishing from here without the
+        // extension leaves the item published and its state unrecorded. The request is put back after.
+        $input             = $application->getInput();
+        $isExtensionScoped = isset($properties['limitToExtension']);
+        $originalExtension = $input->get('extension');
+
+        if ($isExtensionScoped) {
+            $input->set('extension', (string) ($item->translation_item['extension'] ?? ''));
+        }
+
+        try {
+            // The managing component runs its own edit-state check, which can refuse a user this view allows.
+            if (!$model->publish($ids, 1)) {
+                throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_PUBLISH_ERROR'));
+            }
+        } finally {
+            if ($isExtensionScoped) {
+                $input->set('extension', $originalExtension);
+            }
         }
     }
 
