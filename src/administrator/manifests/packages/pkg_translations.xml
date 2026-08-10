@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="package" method="upgrade">
+	<name>pkg_translations</name>
+	<packagename>translations</packagename>
+	<creationDate>2026-08</creationDate>
+	<author>Joomla! Project</author>
+	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+	<packager>Joomla! Project</packager>
+	<packagerurl>https://github.com/joomla-projects/gsoc26_translator_feedback</packagerurl>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<version>0.11.0</version>
+	<description>PKG_TRANSLATIONS_XML_DESCRIPTION</description>
+	<files>
+		<!-- The id of each extension is the element Joomla stores it under -->
+		<file type="component" id="com_translations">com_translations.zip</file>
+		<file type="plugin" id="translations" group="content">plg_content_translations.zip</file>
+		<file type="plugin" id="claude" group="translation">plg_translation_claude.zip</file>
+		<file type="plugin" id="claude" group="rag">plg_rag_claude.zip</file>
+		<file type="plugin" id="translationsdistiller" group="task">plg_task_translationsdistiller.zip</file>
+		<file type="plugin" id="translationstranslate" group="task">plg_task_translationstranslate.zip</file>
+	</files>
+	<languages folder="language">
+		<language tag="en-GB">en-GB/pkg_translations.sys.ini</language>
+	</languages>
+</extension>
