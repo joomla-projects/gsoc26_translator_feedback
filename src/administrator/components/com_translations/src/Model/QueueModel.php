@@ -221,6 +221,20 @@ class QueueModel extends ListModel
             ->where($db->quoteName('a.' . $stateField) . ' <> -2')
             ->bind(':sourceLanguage', $sourceLanguage);
 
+        // Some tables hold several extensions' items; only the mapped extension is ours to translate.
+        if (isset($properties['limitToExtension'])) {
+            $extension = (string) $properties['limitToExtension'];
+            $query->where($db->quoteName('a.extension') . ' = :extension')
+                ->bind(':extension', $extension);
+        }
+
+        // A menu item is associable on the site client alone, so an administrator one can never be translated.
+        if (isset($properties['limitToClient'])) {
+            $client = (int) $properties['limitToClient'];
+            $query->where($db->quoteName('a.client_id') . ' = :client')
+                ->bind(':client', $client, ParameterType::INTEGER);
+        }
+
         // "No need for translation" items are hidden by default; the filter can reveal or isolate them.
         $noNeed = (string) $this->getState('filter.noneed', '');
 

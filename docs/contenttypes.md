@@ -106,6 +106,13 @@ confirm the item can be associated, so the category entry sets
 categories, for example, are shared by many components, so the category entry sets
 `"limitToExtension": "com_content"` to translate only content categories.
 
+**`limitToClient`** (integer, optional) - restrict translation to items whose `client_id`
+column matches this value. Menu items are stored for both clients in one table and Joomla
+associates them on the site client alone, so the menu entry sets `"limitToClient": 0`;
+an administrator menu item is never translated. Both this and `limitToExtension` narrow
+the queue list as well as the translation itself, so an item the component cannot
+translate is never offered.
+
 **`draftForceFields`** (object, optional) - fields pinned to a fixed value on the draft,
 regardless of the source. Where `draftCopyFields` copies the source value, each entry
 here is `column: value`. A menu item uses `{ "home": 0, "parent_id": 1 }` so a
