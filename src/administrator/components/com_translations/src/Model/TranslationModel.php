@@ -169,7 +169,8 @@ class TranslationModel extends BaseDatabaseModel
      * Collect the items waiting on a translation, up to a batch.
      *
      * Each content type is queried on its own, because each has its own table and publish-state
-     * column, and the walk stops as soon as the batch is full.
+     * column, and the walk stops as soon as the batch is full. Types are walked in dependency
+     * order, so an item's related items are translated before the item that points at them.
      *
      * @param   integer  $batchSize  The most items to collect.
      *
@@ -188,7 +189,7 @@ class TranslationModel extends BaseDatabaseModel
 
         $work = [];
 
-        foreach (ContentTypesHelper::getContentTypes() as $contentType) {
+        foreach (ContentTypesHelper::getContentTypesInDependencyOrder() as $contentType) {
             $properties = ContentTypesHelper::getProperties($contentType);
 
             foreach ($targetLanguages as $targetLanguage) {
