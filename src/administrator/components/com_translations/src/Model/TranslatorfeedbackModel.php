@@ -291,6 +291,15 @@ class TranslatorfeedbackModel extends FormModel
             );
         }
 
+        // A tagged item has its tags replaced from the data the model is given, and removed altogether
+        // when the data carries none, so hand it the tags the draft already holds.
+        foreach (array_keys((array) ($properties['m2m_relation'] ?? [])) as $dataKey) {
+            $row[$dataKey] = $this->getTagIds(
+                (string) ($properties['context_tags'] ?? $item->content_type),
+                $translationId
+            );
+        }
+
         return (bool) $model->save($row);
     }
 
@@ -810,6 +819,34 @@ class TranslatorfeedbackModel extends FormModel
         $db->setQuery($query);
 
         return $db->loadAssocList('language', 'id');
+    }
+
+    /**
+     * Load the tag ids attached to an item.
+     *
+     * Tags live in the content item tag map rather than on the item's own table, so they are
+     * read separately.
+     *
+     * @param   string   $tagTypeAlias  The type alias the item's tags are stored under.
+     * @param   integer  $itemId        The item id.
+     *
+     * @return  integer[]  The attached tag ids.
+     *
+     * @since   0.11.0
+     */
+    private function getTagIds(string $tagTypeAlias, int $itemId): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('tag_id'))
+            ->from($db->quoteName('#__contentitem_tag_map'))
+            ->where($db->quoteName('type_alias') . ' = :tagTypeAlias')
+            ->where($db->quoteName('content_item_id') . ' = :itemId')
+            ->bind(':tagTypeAlias', $tagTypeAlias, ParameterType::STRING)
+            ->bind(':itemId', $itemId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return array_map('intval', $db->loadColumn());
     }
 
     /**
