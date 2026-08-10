@@ -16,6 +16,7 @@ namespace Joomla\Component\Translations\Administrator\Model;
 
 use Joomla\CMS\Application\ApplicationHelper;
 use Joomla\CMS\Application\CMSApplicationInterface;
+use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
@@ -39,6 +40,17 @@ use Joomla\Registry\Registry;
  */
 class TranslationModel extends BaseDatabaseModel
 {
+    /**
+     * Failures in a row that end a batch run.
+     *
+     * One item can fail on its own account, but a run of them means the provider is unreachable,
+     * and every further attempt is another paid call for the same answer.
+     *
+     * @var    integer
+     * @since  0.11.0
+     */
+    private const MAX_CONSECUTIVE_FAILURES = 2;
+
     /**
      * Translate a source item into one target language.
      *
@@ -85,6 +97,51 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
+     * Translate one batch of the items waiting on a translation.
+     *
+     * Work is a source item and a target language whose state row is absent, meaning the item has
+     * never been translated into that language, or holds "pending", meaning the source has changed
+     * since it was.
+     *
+     * @param   integer                  $batchSize    The most items translated in one run.
+     * @param   CMSApplicationInterface  $application  The application, used to boot the component.
+     *
+     * @return  integer  The number of items translated.
+     *
+     * @throws  \RuntimeException  When translation fails repeatedly, which means the provider is unreachable.
+     *
+     * @since   0.11.0
+     */
+    public function translateBatch(int $batchSize, CMSApplicationInterface $application): int
+    {
+        $translated = 0;
+        $failures   = 0;
+
+        foreach ($this->pendingWork($batchSize) as $work) {
+            try {
+                $this->translate($work['sourceItemId'], $work['targetLanguage'], $work['contentType'], $application);
+
+                $translated++;
+                $failures = 0;
+            } catch (\Throwable $e) {
+                $failures++;
+
+                // The state row is left untouched, so a provider that comes back finds the same work
+                // waiting rather than a queue of items stranded mid-translation.
+                if ($failures === self::MAX_CONSECUTIVE_FAILURES) {
+                    throw new \RuntimeException(
+                        \sprintf('Stopped after %d failures in a row, the last being: %s', $failures, $e->getMessage()),
+                        0,
+                        $e
+                    );
+                }
+            }
+        }
+
+        return $translated;
+    }
+
+    /**
      * Clear the "no need for translation" flag on a source item's queue row.
      *
      * @param   integer  $sourceItemId  The source item id.
@@ -106,6 +163,151 @@ class TranslationModel extends BaseDatabaseModel
             ->bind(':contentId', $sourceItemId, ParameterType::INTEGER);
         $db->setQuery($query);
         $db->execute();
+    }
+
+    /**
+     * Collect the items waiting on a translation, up to a batch.
+     *
+     * Each content type is queried on its own, because each has its own table and publish-state
+     * column, and the walk stops as soon as the batch is full.
+     *
+     * @param   integer  $batchSize  The most items to collect.
+     *
+     * @return  array<int, array{contentType: string, sourceItemId: int, targetLanguage: string}>
+     *
+     * @since   0.11.0
+     */
+    private function pendingWork(int $batchSize): array
+    {
+        $sourceLanguage  = (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
+        $targetLanguages = $this->targetLanguages($sourceLanguage);
+
+        if ($targetLanguages === []) {
+            return [];
+        }
+
+        $work = [];
+
+        foreach (ContentTypesHelper::getContentTypes() as $contentType) {
+            $properties = ContentTypesHelper::getProperties($contentType);
+
+            foreach ($targetLanguages as $targetLanguage) {
+                $remaining = $batchSize - \count($work);
+
+                if ($remaining < 1) {
+                    return $work;
+                }
+
+                $sourceItemIds = $this->untranslatedItems($contentType, $properties, $sourceLanguage, $targetLanguage, $remaining);
+
+                foreach ($sourceItemIds as $sourceItemId) {
+                    $work[] = [
+                        'contentType'    => $contentType,
+                        'sourceItemId'   => (int) $sourceItemId,
+                        'targetLanguage' => $targetLanguage,
+                    ];
+                }
+            }
+        }
+
+        return $work;
+    }
+
+    /**
+     * The languages translated into: every published content language but the source and "all".
+     *
+     * @param   string  $sourceLanguage  The configured source language code.
+     *
+     * @return  string[]  The language codes, in the order the languages are ordered.
+     *
+     * @since   0.11.0
+     */
+    private function targetLanguages(string $sourceLanguage): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('lang_code'))
+            ->from($db->quoteName('#__languages'))
+            ->where($db->quoteName('published') . ' = 1')
+            ->where($db->quoteName('lang_code') . ' <> ' . $db->quote('*'))
+            ->where($db->quoteName('lang_code') . ' <> :sourceLanguage')
+            ->bind(':sourceLanguage', $sourceLanguage, ParameterType::STRING)
+            ->order($db->quoteName('ordering') . ' ASC');
+        $db->setQuery($query);
+
+        return $db->loadColumn();
+    }
+
+    /**
+     * Source items of one content type with no usable translation in a language.
+     *
+     * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
+     * @param   array    $properties      The content type's properties from the map.
+     * @param   string   $sourceLanguage  The configured source language code.
+     * @param   string   $targetLanguage  The target language code.
+     * @param   integer  $limit           The most rows to return.
+     *
+     * @return  int[]  The source item ids.
+     *
+     * @since   0.11.0
+     */
+    private function untranslatedItems(string $contentType, array $properties, string $sourceLanguage, string $targetLanguage, int $limit): array
+    {
+        $table      = (string) ($properties['table'] ?? '');
+        $stateField = (string) ($properties['stateField'] ?? '');
+        $pending    = 'pending';
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('item.id'))
+            ->from($db->quoteName($table, 'item'))
+            // LEFT joins keep items that have no rows of ours at all, which is what an item nothing
+            // has translated yet looks like.
+            ->join(
+                'LEFT',
+                $db->quoteName('#__translations_queue', 'queue')
+                . ' ON ' . $db->quoteName('queue.content_id') . ' = ' . $db->quoteName('item.id')
+                . ' AND ' . $db->quoteName('queue.content_type') . ' = ' . $db->quote($contentType)
+            )
+            ->join(
+                'LEFT',
+                $db->quoteName('#__translations_queue_states', 'queueState')
+                . ' ON ' . $db->quoteName('queueState.queue_id') . ' = ' . $db->quoteName('queue.id')
+                . ' AND ' . $db->quoteName('queueState.target_language') . ' = ' . $db->quote($targetLanguage)
+            )
+            ->where($db->quoteName('item.language') . ' = :sourceLanguage')
+            ->where($db->quoteName('item.' . $stateField) . ' <> -2')
+            ->where(
+                '(' . $db->quoteName('queue.do_not_translate') . ' IS NULL OR '
+                . $db->quoteName('queue.do_not_translate') . ' = 0)'
+            )
+            // No state row means never translated; pending means the source has moved on since.
+            ->where(
+                '(' . $db->quoteName('queueState.id') . ' IS NULL OR '
+                . $db->quoteName('queueState.translation_state') . ' = :pending)'
+            )
+            ->bind(':sourceLanguage', $sourceLanguage, ParameterType::STRING)
+            ->bind(':pending', $pending, ParameterType::STRING)
+            ->order($db->quoteName('item.id') . ' ASC');
+
+        // The same narrowing the queue applies, so the batch never picks an item translate() refuses.
+        if (isset($properties['limitToExtension'])) {
+            $extension = (string) $properties['limitToExtension'];
+
+            $query->where($db->quoteName('item.extension') . ' = :extension')
+                ->bind(':extension', $extension, ParameterType::STRING);
+        }
+
+        if (isset($properties['limitToClient'])) {
+            $clientId = (int) $properties['limitToClient'];
+
+            $query->where($db->quoteName('item.client_id') . ' = :clientId')
+                ->bind(':clientId', $clientId, ParameterType::INTEGER);
+        }
+
+        $db->setQuery($query, 0, $limit);
+
+        return $db->loadColumn();
     }
 
     /**
