@@ -34,8 +34,11 @@ translatable fields, contexts and relations, are collected in `contenttypes.json
 type to the translation pipeline so the producer can stay independent of any single
 content type.
 
-**Distiller** - the scheduled task that batches collected feedback into reusable
-rules (planned).
+**Distiller** - the part of the component that turns collected feedback into draft
+rules: the `DistillerModel`. It reads a batch of feedback, works out what changed in
+each correction, asks a RAG plugin to distil rules from it, and stores the results as
+unpublished rules for review. It can be run by hand from the Rules view or on a
+schedule by the distiller task plugin.
 
 **Draft** - an automatically translated content item that has not yet been reviewed
 by a human. It is a real but unpublished content item, an actual article or category
@@ -98,12 +101,28 @@ language except the source language and the "All" (`*`) language.
 (for an article: the title, intro text, full text, meta description, and others).
 Listed per content type in `contenttypes.json`.
 
+**RAG plugin** - a plugin in the `rag` group, which answers two events: `onDistil`, to
+distil rules from corrections, and `onNormalise`, to reduce words to their standard
+form. The package ships `plg_rag_claude`. It is a separate group from the translation
+plugins, and carries its own API key and model setting, so a site can learn with one
+model and translate with another. RAG stands for retrieval-augmented generation, the
+practice of retrieving relevant knowledge and adding it to a prompt. The retrieval
+itself lives in the component, in `RuleRetriever`.
+
+**Standard form** - the form of a word that rules are matched on: a noun reduced to
+its singular, a verb to its infinitive. A rule's term and the words of the source text
+are reduced the same way, so a rule written for "article" also applies where the text
+says "articles". Standard forms are stored in `#__translations_standard_forms`, one row
+per word per language, so each word is worked out only once.
+
 **Translation plugin / translation provider** - a plugin in the `translation` group
-that performs the provider-specific translation call (for example, one for Claude)
-in response to the `onTranslate` event. The component itself stays provider-agnostic,
-so different providers can be shipped as different plugins. Until a real one exists,
-the producer uses a mock translation that prefixes each string with the target
-language (`[MOCK:<lang>] ...`).
+that performs the provider-specific translation call in response to the `onTranslate`
+event. The package ships `plg_translation_claude`, which calls the Anthropic Claude
+API. The component itself stays provider-agnostic, so different providers can be
+shipped as different plugins, and several can be installed at once. With no translation
+plugin enabled the component reports an error rather than producing a draft; there is
+no built-in fallback translation. See [translation-plugin.md](translation-plugin.md) for
+how to write one.
 
 ## Translation states
 
@@ -113,16 +132,17 @@ meaningful.
 
 - **No translation yet** - there is no state row for this item and language; it is
   ready to be translated. This is not a stored value, it is the absence of one.
-- **Pending** - the item has been queued for translation but its batch turn has not
-  come yet. Reserved for the scheduled task plugin (not yet built); the current manual
-  trigger does not use it and writes "review" directly. The label shown for this
-  state is planned to become "Pending for translation", to be clearer.
-- **Translating** - the translation service is busy producing the translation for
-  this item right now. Reserved for the scheduled task plugin.
+- **Pending** - the item is waiting to be translated. It is set when a source item is
+  edited after it was translated, which sends its translations back to be made again.
+  A translation is produced from this state just as it is from no state at all.
+- **Translating** - reserved, and not currently written. The translate task plugin
+  deliberately leaves the state alone while it works: if a provider were unreachable,
+  an item marked this way would be stuck there with nothing in the interface to reset
+  it.
 - **Review** - the automatically translated draft is under review by a human
   translator, who edits it and gives feedback. From here it can be approved.
 - **Approved** - a human translator has approved the translation; it is ready to be
   published.
-- **Published** - the translated content item is published. By default this is
-  reached only after a human approves it; an optional setting (planned) can publish
-  a machine translation immediately, before review.
+- **Published** - the translated content item is published. This is reached only after
+  a human approves it; an optional setting to publish a machine translation immediately,
+  before review, is planned.
