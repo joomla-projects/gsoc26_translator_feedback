@@ -460,9 +460,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         $item        = $event->getItem();
         $itemId      = (int) $item->id;
 
-        // Core removes the association link during the delete that follows, so anything that needs it is
-        // read now. A managed source captures its translation group (an empty array still marks the source
-        // whose queue row to clean); otherwise the item may be one of our translation drafts.
+        // The association link is gone once the delete finishes, so anything that needs it is read now.
+        // A managed source captures its translation group (an empty array still marks the source whose
+        // queue row to clean); otherwise the item may be one of our translation drafts.
         if ($this->queueId($itemId, $contentType) !== null) {
             $this->capturedTranslations[$itemId] = $this->translationGroupIds($itemId, $context);
 
@@ -499,6 +499,12 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         $contentType = $event->getContext();
         $itemId      = (int) $event->getItem()->id;
 
+        // Core removes the row only for a model declaring an associationsContext, so a type this
+        // component associates itself is cleaned here.
+        if (!($properties['associationsByModel'] ?? true)) {
+            $this->removeAssociation($itemId, (string) $properties['context_associations']);
+        }
+
         // A managed source: delete its translations and clean its queue rows.
         if (isset($this->capturedTranslations[$itemId])) {
             $translations = $this->capturedTranslations[$itemId];
@@ -521,6 +527,65 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
             $this->clearQueueCell($cell['queueId'], $cell['language']);
         }
+    }
+
+    /**
+     * Remove a deleted item's association row, for a content type whose associations this component
+     * writes rather than the item's own model.
+     *
+     * An association needs two members to mean anything, so when removing this row would leave fewer
+     * the rest of the group goes with it, as core does for the types its models associate.
+     *
+     * @param   integer  $itemId   The deleted item id.
+     * @param   string   $context  The #__associations context for the content type.
+     *
+     * @return  void
+     *
+     * @since   1.0.0
+     */
+    private function removeAssociation(int $itemId, string $context): void
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('key'))
+            ->from($db->quoteName('#__associations'))
+            ->where($db->quoteName('context') . ' = :context')
+            ->where($db->quoteName('id') . ' = :id')
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':id', $itemId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        $key = $db->loadResult();
+
+        if ($key === null) {
+            return;
+        }
+
+        $query = $db->getQuery(true)
+            ->select('COUNT(*)')
+            ->from($db->quoteName('#__associations'))
+            ->where($db->quoteName('context') . ' = :context')
+            ->where($db->quoteName('key') . ' = :key')
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':key', $key, ParameterType::STRING);
+        $db->setQuery($query);
+
+        $members = (int) $db->loadResult();
+
+        $query = $db->getQuery(true)
+            ->delete($db->quoteName('#__associations'))
+            ->where($db->quoteName('context') . ' = :context')
+            ->where($db->quoteName('key') . ' = :key')
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':key', $key, ParameterType::STRING);
+
+        if ($members > 2) {
+            $query->where($db->quoteName('id') . ' = :id')
+                ->bind(':id', $itemId, ParameterType::INTEGER);
+        }
+
+        $db->setQuery($query);
+        $db->execute();
     }
 
     /**
