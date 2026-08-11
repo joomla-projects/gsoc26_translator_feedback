@@ -102,7 +102,7 @@ class RuleRetriever
      *
      * @since   0.7.0
      */
-    private static function hasStandardForm(array $rules): bool
+    public static function hasStandardForm(array $rules): bool
     {
         foreach ($rules as $rule) {
             if ((string) ($rule['source_term_standard'] ?? '') !== '') {
@@ -114,14 +114,14 @@ class RuleRetriever
     }
 
     /**
-     * Flatten an item's strings into one plain-text haystack to match rules against.
+     * Flatten source-language strings into one plain-text haystack to match rules against.
      *
      * Removes HTML, decodes entities and collapses whitespace, so a term is matched against the
      * readable text rather than markup.
      *
-     * @param   array  $sourceStrings  The item's source strings, keyed by field.
+     * @param   array  $sourceStrings  The source strings to flatten.
      *
-     * @return  string  The item's readable text on one line.
+     * @return  string  The readable text on one line.
      *
      * @since   0.7.0
      */
@@ -194,7 +194,7 @@ class RuleRetriever
      *
      * @since   0.7.0
      */
-    private static function appliesToText(array $rule, string $text, array $standardForms = []): bool
+    public static function appliesToText(array $rule, string $text, array $standardForms = []): bool
     {
         if (self::matchesStandardForm($rule, $standardForms)) {
             return true;
