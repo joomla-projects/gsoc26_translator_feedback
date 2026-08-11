@@ -90,6 +90,17 @@
         </field>
 
         <field
+            name="source_term_standard"
+            type="text"
+            label="COM_TRANSLATIONS_RULE_FIELD_STANDARD_FORM_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_STANDARD_FORM_DESC"
+            class="readonly"
+            readonly="true"
+            filter="unset"
+            showon="rule_type:terminology,preservation"
+        />
+
+        <field
             name="source_origin"
             type="list"
             label="COM_TRANSLATIONS_RULE_FIELD_ORIGIN_LABEL"
