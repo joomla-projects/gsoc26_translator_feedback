@@ -64,6 +64,7 @@ $stateIcons = [
             <?php echo Text::_('JGLOBAL_NO_MATCHING_RESULTS'); ?>
         </div>
     <?php else : ?>
+        <div class="table-responsive">
         <table class="table table-striped" id="queueList">
             <caption class="visually-hidden">
                 <?php echo Text::_('COM_TRANSLATIONS_QUEUE_TABLE_CAPTION'); ?>,
@@ -144,6 +145,7 @@ $stateIcons = [
                 <?php endforeach; ?>
             </tbody>
         </table>
+        </div>
 
         <?php echo $this->pagination->getListFooter(); ?>
     <?php endif; ?>

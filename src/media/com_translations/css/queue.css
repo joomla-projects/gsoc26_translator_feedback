@@ -18,3 +18,29 @@
 .com_translations #queueList a.badge {
     --link-hover-color: var(--badge-color);
 }
+
+/* Both templates place the grid in a flex item, which grows with the grid unless it is allowed to shrink. */
+.com_translations main,
+.com_translations .row > [class*="col-"] {
+    min-width: 0;
+}
+
+/* Scroll the languages inside the grid: no width of its own, and nothing within it reaching the page's own scrolling. */
+.com_translations .table-responsive {
+    width: 0;
+    min-width: 100%;
+}
+
+/* Hold the source column to a share of the grid so the languages take the rest of it, spread across
+   the page while there are few of them and scrolling once there are more than it can hold. */
+.com_translations #queueList thead th:first-child {
+    width: 30%;
+}
+
+/* Hold the source item beside its row while the languages scroll; cells take their background from the template. */
+.com_translations #queueList thead th:first-child,
+.com_translations #queueList tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+}
