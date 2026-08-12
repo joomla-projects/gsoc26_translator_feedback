@@ -1,0 +1,20 @@
+@charset "UTF-8";
+
+/* The queue grid, one column per target language, on a page narrower than it. */
+
+/* A badge is padded for a word, wider than it is tall. A cell holds one icon, so it takes the
+   template's own vertical padding on all four sides. */
+.com_translations #queueList .badge {
+    --badge-padding-x: var(--badge-padding-y);
+}
+
+/* Atum spaces the spans in a badge apart, which would hold the icon off centre. */
+.com_translations #queueList .badge > span {
+    margin-inline-end: 0;
+}
+
+/* Cassiopeia recolours every link on hover, so a cell keeps the colour its badge already carries.
+   Atum leaves badges out of that rule, which is the behaviour followed here. */
+.com_translations #queueList a.badge {
+    --link-hover-color: var(--badge-color);
+}

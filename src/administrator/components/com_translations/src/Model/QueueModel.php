@@ -25,8 +25,8 @@ use Joomla\Database\ParameterType;
  * List model for the translation queue grid.
  *
  * One row per source item of the chosen content type, target languages as columns.
- * getItems() then attaches each item's per language translation state
- * map via a single follow-up query.
+ * getItems() then attaches each item's per language translation state and
+ * published maps, one follow-up query each.
  *
  * @since  0.1.0
  */
@@ -400,9 +400,9 @@ class QueueModel extends ListModel
     }
 
     /**
-     * Load items and attach each one's per language state map.
+     * Load items and attach each one's per language state and published maps.
      *
-     * @return  object[]  Items with ->states[langCode] => status map.
+     * @return  object[]  Items with ->states[langCode] => status and ->publishedTranslations[langCode] => bool.
      *
      * @since   0.1.0
      */
@@ -443,7 +443,63 @@ class QueueModel extends ListModel
         $db->setQuery($query);
         $rows = $db->loadObjectList() ?: [];
 
-        return self::applyStates($items, $rows);
+        return self::applyPublishedTranslations(
+            self::applyStates($items, $rows),
+            $this->loadTranslationPublishStates($ids, $contentType)
+        );
+    }
+
+    /**
+     * Read whether each listed item's translations are published on the site.
+     *
+     * The translation state records where a translation stands in the review process, which is a
+     * different question from whether its item is live. The two can diverge, so liveness is read
+     * from the item rather than inferred from the state. The translations are found through the
+     * source's association group, the same way the producer finds them.
+     *
+     * @param   int[]   $sourceIds    The listed source item ids.
+     * @param   string  $contentType  The content type key the grid is showing.
+     *
+     * @return  object[]  Rows of content_id, language and publishState.
+     *
+     * @since   1.0.0
+     */
+    private function loadTranslationPublishStates(array $sourceIds, string $contentType): array
+    {
+        $properties = ContentTypesHelper::getProperties($contentType);
+        $context    = (string) ($properties['context_associations'] ?? '');
+        $table      = (string) ($properties['table'] ?? '');
+        $stateField = (string) ($properties['stateField'] ?? '');
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select(
+                [
+                    $db->quoteName('sourceAssociation.id', 'content_id'),
+                    $db->quoteName('item.language'),
+                    $db->quoteName('item.' . $stateField, 'publishState'),
+                ]
+            )
+            ->from($db->quoteName('#__associations', 'sourceAssociation'))
+            ->join(
+                'INNER',
+                $db->quoteName('#__associations', 'groupAssociation'),
+                $db->quoteName('groupAssociation.key') . ' = ' . $db->quoteName('sourceAssociation.key')
+            )
+            ->join(
+                'INNER',
+                $db->quoteName($table, 'item'),
+                $db->quoteName('item.id') . ' = ' . $db->quoteName('groupAssociation.id')
+            )
+            ->where($db->quoteName('sourceAssociation.context') . ' = :context')
+            ->where($db->quoteName('groupAssociation.context') . ' = :groupContext')
+            ->whereIn($db->quoteName('sourceAssociation.id'), $sourceIds, ParameterType::INTEGER)
+            ->bind(':context', $context, ParameterType::STRING)
+            ->bind(':groupContext', $context, ParameterType::STRING);
+
+        $db->setQuery($query);
+
+        return $db->loadObjectList() ?: [];
     }
 
     /**
@@ -467,6 +523,35 @@ class QueueModel extends ListModel
 
         foreach ($items as $item) {
             $item->states = $statesByItem[(int) $item->id] ?? [];
+        }
+
+        return $items;
+    }
+
+    /**
+     * Fold association rows into each item's per language published map. Pure (no DB).
+     *
+     * A language is absent from the map when the item has no translation in it. The source item is
+     * a member of its own association group, but its language is never a target language, so the
+     * entry it contributes is never read.
+     *
+     * @param   object[]  $items  Source items.
+     * @param   object[]  $rows   Association rows (content_id, language, publishState).
+     *
+     * @return  object[]  Items with a publishedTranslations map attached.
+     *
+     * @since   1.0.0
+     */
+    protected static function applyPublishedTranslations(array $items, array $rows): array
+    {
+        $publishedByItem = [];
+
+        foreach ($rows as $row) {
+            $publishedByItem[(int) $row->content_id][$row->language] = (int) $row->publishState === 1;
+        }
+
+        foreach ($items as $item) {
+            $item->publishedTranslations = $publishedByItem[(int) $item->id] ?? [];
         }
 
         return $items;

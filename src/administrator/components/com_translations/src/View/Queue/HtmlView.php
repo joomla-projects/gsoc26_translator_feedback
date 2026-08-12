@@ -114,6 +114,10 @@ class HtmlView extends BaseHtmlView
         $this->sourceLanguageTitle = $model->getSourceLanguageTitle();
         $this->contentTypes        = $model->getContentTypes();
 
+        // The stylesheet lets the grid scroll within the page and holds the source column beside its row.
+        $this->getDocument()->getWebAssetManager()
+            ->registerAndUseStyle('com_translations.queue', 'com_translations/queue.css');
+
         $this->addToolbar();
 
         parent::display($tpl);
