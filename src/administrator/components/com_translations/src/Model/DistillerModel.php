@@ -20,6 +20,7 @@ use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Translations\Administrator\Event\DistilEvent;
+use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Component\Translations\Administrator\Helper\WordNormaliser;
 use Joomla\Component\Translations\Administrator\Table\RuleTable;
 use Joomla\Database\ParameterType;
@@ -45,6 +46,42 @@ class DistillerModel extends BaseDatabaseModel
     private const SOURCE_ORIGIN = 'distilled';
 
     /**
+     * The rule states offered as context: draft and published. A trashed rule is left out, so a
+     * provider cannot refine one back into use.
+     *
+     * @var    int[]
+     * @since  1.0.0
+     */
+    private const CONTEXT_STATES = [0, 1];
+
+    /**
+     * The most rules sent as context in one request, so the request stays bounded as the rule
+     * base grows.
+     *
+     * @var    integer
+     * @since  1.0.0
+     */
+    private const MAX_CONTEXT_RULES = 50;
+
+    /**
+     * The most style rules sent as context, since they apply to the whole language rather than
+     * to a term and so are never narrowed by the corrections.
+     *
+     * @var    integer
+     * @since  1.0.0
+     */
+    private const MAX_CONTEXT_STYLE_RULES = 15;
+
+    /**
+     * The rule fields a provider is given, so the columns read only for matching stay out of the
+     * request.
+     *
+     * @var    string[]
+     * @since  1.0.0
+     */
+    private const CONTEXT_RULE_FIELDS = ['id', 'rule_type', 'rule_name', 'rule_text', 'source_term', 'target_term'];
+
+    /**
      * Distil draft rules from one batch of pending feedback.
      *
      * Feedback is processed one target language at a time so its terminology stays coherent;
@@ -58,7 +95,7 @@ class DistillerModel extends BaseDatabaseModel
      *
      * @since   0.4.0
      */
-    public function distill(int $batchSize = 20): int
+    public function distill(int $batchSize = 10): int
     {
         $feedback = $this->loadPendingFeedback($batchSize);
 
@@ -90,7 +127,7 @@ class DistillerModel extends BaseDatabaseModel
 
             $candidates = $this->requestCandidates(
                 $corrections,
-                $this->loadExistingRules($targetLanguage),
+                $this->contextRules($corrections, $sourceLanguage, $targetLanguage),
                 $sourceLanguage,
                 $targetLanguage
             );
@@ -251,12 +288,51 @@ class DistillerModel extends BaseDatabaseModel
     }
 
     /**
-     * Load the rules already learned for a target language, in a compact shape for the prompt,
-     * so a provider merges its candidates into them rather than duplicating.
+     * Select the rules a provider is shown alongside one language's corrections, so it merges its
+     * candidates into them rather than duplicating.
+     *
+     * The rules are matched against the corrections' source text the same way they are matched
+     * against an item's source strings when it is translated: a rule's term and a correction's
+     * source text are both in the source language, so it is the same operation.
+     *
+     * @param   array   $corrections     The corrections being distilled.
+     * @param   string  $sourceLanguage  The source language code.
+     * @param   string  $targetLanguage  The target language code.
+     *
+     * @return  array  The rules to send as context.
+     *
+     * @since   1.0.0
+     */
+    private function contextRules(array $corrections, string $sourceLanguage, string $targetLanguage): array
+    {
+        $rules = $this->loadExistingRules($targetLanguage);
+
+        if ($rules === []) {
+            return [];
+        }
+
+        $text = RuleRetriever::plainText(array_column($corrections, 'source_text'));
+
+        // A language whose rules carry no standard form gains nothing from reducing the text.
+        $standardForms = RuleRetriever::hasStandardForm($rules)
+            ? WordNormaliser::standardForms(
+                $this->getDatabase(),
+                $this->getDispatcher(),
+                WordNormaliser::tokenise($text),
+                $sourceLanguage
+            )
+            : [];
+
+        return $this->selectContextRules($rules, $text, $standardForms);
+    }
+
+    /**
+     * Load the rules learned for a target language, drafts first and by confidence within each
+     * state, so a cap keeps the ones likeliest to be duplicated and safest to refine.
      *
      * @param   string  $targetLanguage  The target language code.
      *
-     * @return  array  The existing rules.
+     * @return  array  The rule rows, carrying the columns rules are matched on.
      *
      * @since   0.4.0
      */
@@ -264,13 +340,70 @@ class DistillerModel extends BaseDatabaseModel
     {
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
-            ->select($db->quoteName(['id', 'rule_type', 'rule_name', 'rule_text', 'source_term', 'target_term']))
+            ->select(
+                $db->quoteName(
+                    [
+                        'id', 'rule_type', 'rule_name', 'rule_text',
+                        'source_term', 'source_term_standard', 'target_term', 'search_keywords',
+                    ]
+                )
+            )
             ->from($db->quoteName('#__translations_rules'))
             ->where($db->quoteName('target_language') . ' = :lang')
+            ->whereIn($db->quoteName('state'), self::CONTEXT_STATES)
+            ->order(
+                [
+                    $db->quoteName('state') . ' ASC',
+                    $db->quoteName('confidence') . ' DESC',
+                    $db->quoteName('id') . ' DESC',
+                ]
+            )
             ->bind(':lang', $targetLanguage, ParameterType::STRING);
         $db->setQuery($query);
 
         return $db->loadAssocList() ?: [];
+    }
+
+    /**
+     * Keep the rules that apply to the corrections, capped, and reduce each to the fields a
+     * provider is given.
+     *
+     * Style rules apply to the whole language rather than to a term, so they are not narrowed by
+     * the text and carry their own cap. The columns rules are matched on are dropped here, so
+     * they never reach the request.
+     *
+     * @param   array   $rules          The candidate rules, ordered.
+     * @param   string  $text           The corrections' readable source text.
+     * @param   array   $standardForms  Standard form keyed by the text's words, where known.
+     *
+     * @return  array  The rules to send as context.
+     *
+     * @since   1.0.0
+     */
+    private function selectContextRules(array $rules, string $text, array $standardForms): array
+    {
+        $selected = [];
+        $style    = 0;
+
+        foreach ($rules as $rule) {
+            if (\count($selected) >= self::MAX_CONTEXT_RULES) {
+                break;
+            }
+
+            if ($rule['rule_type'] === 'style') {
+                if ($style >= self::MAX_CONTEXT_STYLE_RULES) {
+                    continue;
+                }
+
+                $style++;
+            } elseif (!RuleRetriever::appliesToText($rule, $text, $standardForms)) {
+                continue;
+            }
+
+            $selected[] = array_intersect_key($rule, array_flip(self::CONTEXT_RULE_FIELDS));
+        }
+
+        return $selected;
     }
 
     /**
