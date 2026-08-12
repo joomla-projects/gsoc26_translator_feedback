@@ -137,7 +137,7 @@ class HtmlView extends BaseHtmlView
         }
 
         if ($this->state->get('filter.published') == -2 && $canDo->get('core.delete')) {
-            ToolbarHelper::deleteList('JGLOBAL_CONFIRM_DELETE', 'rules.delete', 'JTOOLBAR_EMPTY_TRASH');
+            ToolbarHelper::deleteList('JGLOBAL_CONFIRM_DELETE', 'rules.delete', 'JTOOLBAR_DELETE_FROM_TRASH');
         }
 
         if ($canDo->get('core.admin') || $canDo->get('core.options')) {
