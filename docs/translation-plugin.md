@@ -42,9 +42,33 @@ together, so the provider can keep the context between them:
   [contenttypes.md](contenttypes.md)).
 - `getSourceLanguage()` - the source language code, for example `en-GB`.
 - `getTargetLanguage()` - the target language code, for example `fr-FR`.
+- `getRules()` - the distilled rules that apply to this item, for the provider to fold into
+  its prompt. The component has already chosen them: published rules for the target language
+  only, terminology and preservation rules kept only where their term or a search keyword
+  appears in the item's text, style rules kept because they apply to the whole language, and
+  the result capped so the prompt stays bounded. A plugin does not filter them again.
 
-Later, the matched rules and extra context (for retrieval-augmented prompting) will be
-passed in as well, for the provider to fold into its prompt.
+The rules arrive grouped by rule type, under the keys `terminology`, `style` and
+`preservation`. Each rule in a group is an array with `source_term`, `target_term` and
+`rule_text`, and any of them may be empty:
+
+```php
+[
+    'terminology'  => [
+        ['source_term' => 'article', 'target_term' => 'Beitrag', 'rule_text' => ''],
+    ],
+    'style'        => [
+        ['source_term' => '', 'target_term' => '', 'rule_text' => 'Address the reader informally.'],
+    ],
+    'preservation' => [
+        ['source_term' => 'Template', 'target_term' => '', 'rule_text' => ''],
+    ],
+]
+```
+
+How a plugin words these in its prompt is up to it. The Claude plugin turns them into three
+labelled sections. A group can be empty, and a site with no rules yet gets three empty
+groups, so handle that rather than assuming rules are present.
 
 ## What the plugin returns
 
