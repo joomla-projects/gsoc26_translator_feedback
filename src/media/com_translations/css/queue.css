@@ -29,6 +29,7 @@
 .com_translations .table-responsive {
     width: 0;
     min-width: 100%;
+    contain: paint;
 }
 
 /* Hold the source column to a share of the grid so the languages take the rest of it, spread across
