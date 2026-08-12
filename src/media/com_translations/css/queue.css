@@ -32,16 +32,23 @@
     contain: paint;
 }
 
+/* Partition colour, taken from the template's variable with a literal fallback for when it is not defined. */
+.com_translations #queueList {
+    --tf-border: var(--border-color, #dee2e6);
+}
+
 /* Hold the source column to a share of the grid so the languages take the rest of it, spread across
    the page while there are few of them and scrolling once there are more than it can hold. */
 .com_translations #queueList thead th:first-child {
     width: 30%;
 }
 
-/* Hold the source item beside its row while the languages scroll; cells take their background from the template. */
+/* Hold the source item beside its row while the languages scroll, partitioned off from them;
+   cells take their background from the template. */
 .com_translations #queueList thead th:first-child,
 .com_translations #queueList tbody th {
     position: sticky;
     left: 0;
     z-index: 2;
+    border-right: 3px solid var(--tf-border);
 }

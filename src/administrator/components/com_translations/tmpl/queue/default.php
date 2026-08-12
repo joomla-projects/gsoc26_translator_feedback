@@ -73,7 +73,7 @@ $stateIcons = [
             </caption>
             <thead>
                 <tr>
-                    <th scope="col" class="border-end">
+                    <th scope="col">
                         <?php echo HTMLHelper::_('searchtools.sort', Text::sprintf('COM_TRANSLATIONS_HEADING_SOURCE', $this->escape($this->sourceLanguageTitle)), 'a.title', $listDirn, $listOrder); ?>
                     </th>
                     <?php foreach ($this->targetLanguages as $langCode => $language) : ?>
@@ -87,7 +87,7 @@ $stateIcons = [
             <tbody>
                 <?php foreach ($this->items as $item) : ?>
                     <tr>
-                        <th scope="row" class="border-end">
+                        <th scope="row">
                             <?php echo $this->escape($item->title); ?>
                         </th>
                         <?php if (!empty($item->do_not_translate)) : ?>
