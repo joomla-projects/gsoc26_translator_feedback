@@ -1,0 +1,54 @@
+@charset "UTF-8";
+
+/* The queue grid, one column per target language, on a page narrower than it. */
+
+/* A badge is padded for a word, wider than it is tall. A cell holds one icon, so it takes the
+   template's own vertical padding on all four sides. */
+.com_translations #queueList .badge {
+    --badge-padding-x: var(--badge-padding-y);
+}
+
+/* Atum spaces the spans in a badge apart, which would hold the icon off centre. */
+.com_translations #queueList .badge > span {
+    margin-inline-end: 0;
+}
+
+/* Cassiopeia recolours every link on hover, so a cell keeps the colour its badge already carries.
+   Atum leaves badges out of that rule, which is the behaviour followed here. */
+.com_translations #queueList a.badge {
+    --link-hover-color: var(--badge-color);
+}
+
+/* Both templates place the grid in a flex item, which grows with the grid unless it is allowed to shrink. */
+.com_translations main,
+.com_translations .row > [class*="col-"] {
+    min-width: 0;
+}
+
+/* Scroll the languages inside the grid: no width of its own, and nothing within it reaching the page's own scrolling. */
+.com_translations .table-responsive {
+    width: 0;
+    min-width: 100%;
+    contain: paint;
+}
+
+/* Partition colour, taken from the template's variable with a literal fallback for when it is not defined. */
+.com_translations #queueList {
+    --tf-border: var(--border-color, #dee2e6);
+}
+
+/* Hold the source column to a share of the grid so the languages take the rest of it, spread across
+   the page while there are few of them and scrolling once there are more than it can hold. */
+.com_translations #queueList thead th:first-child {
+    width: 30%;
+}
+
+/* Hold the source item beside its row while the languages scroll, partitioned off from them;
+   cells take their background from the template. */
+.com_translations #queueList thead th:first-child,
+.com_translations #queueList tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 2;
+    border-right: 3px solid var(--tf-border);
+}
