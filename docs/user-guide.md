@@ -48,31 +48,75 @@ the language your content is authored in. Everything the queue lists as an origi
 translate is a content item in this language; every installed content language except
 the source and the special "All" (`*`) language is treated as a target language.
 
+## Publishing translations automatically
+
+By default a machine translation is created unpublished, so nothing reaches your visitors
+before a translator has read it. The **Auto-Publish New Translations** option (Options) changes
+that: with it on, a translation goes live the moment it is created.
+
+The option applies only the **first** time an item is translated into a language. Once a
+translation exists, translating it again never changes whether it is on the site: a live
+translation stays live and an unpublished one stays unpublished, whatever the option says. This
+is why re-translating an item after its source is edited no longer takes a published page down.
+
+Turning it on is a real trade. Visitors see the machine's own wording until a translator gets
+to it, and after a source edit a live page is replaced by a fresh machine translation. What
+makes it reasonable is that the corrections made earlier are captured as feedback, and once they
+have been distilled and the rules that came out of them published, a later translation speaks the
+terminology the community taught it. Joomla's version history also keeps the approved text, so
+nothing is lost.
+
 ## The views and the workflow
 
 ### Queue
 
 The queue is a grid. Each row is a source-language content item; each column is a target
-language. A cell shows the state of that item's translation into that language:
+language, headed by its language code with the full name as a tooltip. A cell shows the state
+of that item's translation into that language as an icon, and hovering it names the state:
 
-- **no translation yet**, an empty cell,
+- **no translation yet**, a grey circle,
 - **pending**, waiting to be translated, which is where a translation goes when its source
   has been edited since it was made,
 - **review**, a draft is waiting for a translator,
 - **approved**, a translator has finished with it,
-- **published**, the translated item is live.
+- **published**, the translation was approved and published from here.
+
+Each state has its own icon, so none of them has to be told apart by colour alone. The colours
+group them instead: grey for nothing yet, blue for pending and approved, green for published,
+and amber for review, the one state that is waiting on a translator. Where a cell can be
+clicked its tooltip also says what clicking does.
+
+With many languages the grid scrolls sideways on its own, keeping the source column beside its
+row, so the page itself never grows wider than the screen.
 
 Use the tab above the grid to move between content types. There is one tab per type the
 component translates: articles, categories, tags and site menu items.
 
 From a cell with no translation, or one that is pending, you can trigger a translation. It
-creates an unpublished draft in that language and sets the cell to "review". Clicking a cell
-in review or approved opens the side-by-side editor. Items marked "no need for translation"
-are hidden by default; a filter lets you show them and clear the flag.
+creates a draft in that language and sets the cell to "review". The cell spins while the
+translation runs, and a second click on it is ignored. Clicking a cell in review or
+approved opens the side-by-side editor. Items marked "no need for translation" are hidden by
+default; a filter lets you show them and clear the flag.
 
 A translation is made from the source as it was at that moment, and the component remembers
 which version that was. Edit the source afterwards and its translations go back to pending,
-so you can see at a glance which ones no longer match their original.
+so you can see at a glance which ones no longer match their original. A translation that is
+already on the site stays there while it waits, and re-translating it replaces its text
+without taking the page down.
+
+### Whether a translation is on the site
+
+The state in a cell says where a translation stands in its **review**. Whether the translated
+item is **on the site** is a different question, and Joomla answers it: someone can publish or
+unpublish a translated article in Content, Articles, without the queue being involved at all.
+
+Where those two disagree, the cell shows an eye beside its state:
+
+- a **green eye** means the item is live although it was not published from here,
+- a **crossed eye** means it was published from here and is no longer live.
+
+Where they agree there is no eye, so the marker only ever draws attention to something you
+might not expect.
 
 ### Translator feedback view
 
@@ -88,7 +132,8 @@ Correct whatever is wrong, then choose one of:
   review, so you can come back to it later. Nothing is learned yet.
 - **Approve** says the translation is finished. Every field you changed is compared with
   what the machine produced, and each difference is stored as feedback for the component to
-  learn from. The translated item is not published.
+  learn from. Approving leaves the translated item where it is: it does not publish one that
+  is unpublished, and does not take down one that is already live.
 - **Approve & Publish** does the same and publishes the translated item as well.
 
 Approving is what teaches the component, so approve when you are happy with the whole
@@ -164,10 +209,8 @@ Joomla plugin, so enable the ones you want before creating a task.
 
 ## What is still in progress
 
-The component is under active development. Two things are worth knowing:
+The component is under active development. One thing is worth knowing:
 
-- A translated item is published only after a person approves it. An option to publish a
-  machine translation immediately, before review, is planned.
 - The component needs a **translation plugin** and a **RAG plugin** to be installed, enabled
   and configured with an API key. With no translation plugin enabled, asking for a
   translation reports an error rather than producing anything.

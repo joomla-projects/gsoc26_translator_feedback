@@ -41,8 +41,9 @@ unpublished rules for review. It can be run by hand from the Rules view or on a
 schedule by the distiller task plugin.
 
 **Draft** - an automatically translated content item that has not yet been reviewed
-by a human. It is a real but unpublished content item, an actual article or category
-for example, created by the producer and linked to its source.
+by a human. It is a real content item, an actual article or category for example,
+created by the producer and linked to its source. It is unpublished unless the
+component is set to publish new translations.
 
 **Feedback** - a human correction captured when a translator edits a draft. Stored
 as a preference pair in `#__translations_feedback`: the `source_text`, the
@@ -62,8 +63,8 @@ the queue by default.
 
 **Producer** - the part of the component that produces a translation: the
 `TranslationModel`. Given a source content item and a target language it prepares
-the text, creates the unpublished draft, links it to the source, and sets the queue
-state to "review". It is provider-agnostic; the actual translation call lives in a
+the text, creates the draft, links it to the source, and sets the queue state to
+"review". It is provider-agnostic; the actual translation call lives in a
 separate translation plugin. "Producer-only" (as in "the categories commit is
 producer-only") means a change adds only this production side for a content type,
 with no queue interface to trigger it yet.
@@ -141,8 +142,10 @@ meaningful.
   it.
 - **Review** - the automatically translated draft is under review by a human
   translator, who edits it and gives feedback. From here it can be approved.
-- **Approved** - a human translator has approved the translation; it is ready to be
-  published.
-- **Published** - the translated content item is published. This is reached only after
-  a human approves it; an optional setting to publish a machine translation immediately,
-  before review, is planned.
+- **Approved** - a human translator has approved the translation. Approving does not
+  change whether the item is on the site.
+- **Published** - the translated content item has been approved and published from the
+  component. It is written by Approve & Publish, and by the install backfill for a
+  translation that already existed and was live. Like the states above it describes the
+  review rather than the item: an item can be live without being in this state, which is
+  what the eye beside a queue cell shows.
