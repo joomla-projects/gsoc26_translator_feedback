@@ -307,8 +307,8 @@ class TranslatorfeedbackModel extends FormModel
      * Save the translation and mark it as approved.
      *
      * Approval is the translator's signal that the translation is finished: the corrections
-     * are paired against the machine draft as feedback, and the item is left unpublished for
-     * whoever publishes it.
+     * are paired against the machine draft as feedback, and the item keeps the published state
+     * it has, for whoever publishes it.
      *
      * @param   array                    $data         Submitted form values, keyed translation_<field> plus a com_fields array.
      * @param   CMSApplicationInterface  $application  The application, used to boot the component.

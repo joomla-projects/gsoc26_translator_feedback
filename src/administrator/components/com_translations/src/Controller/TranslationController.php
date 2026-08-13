@@ -21,8 +21,8 @@ use Joomla\CMS\Router\Route;
 /**
  * Controller for translating queued items.
  *
- * The translate task turns one source item into an unpublished draft for one
- * target language; the work is done by TranslationModel.
+ * The translate task turns one source item into a draft for one target
+ * language; the work is done by TranslationModel.
  *
  * @since  0.3.0
  */
