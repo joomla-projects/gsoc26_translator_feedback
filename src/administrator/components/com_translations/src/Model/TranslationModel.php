@@ -32,9 +32,10 @@ use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
 
 /**
- * Producer model: turns a source item and a target language into an unpublished
- * translated draft, linked back to the source via #__associations, with its
- * per-language queue state set to "review" (ready for a translator to correct).
+ * Producer model: turns a source item and a target language into a translated
+ * draft, linked back to the source via #__associations, with its per-language
+ * queue state set to "review" (ready for a translator to correct). The draft is
+ * unpublished unless the component is set to publish new translations.
  *
  * @since  0.3.0
  */
@@ -54,8 +55,8 @@ class TranslationModel extends BaseDatabaseModel
     /**
      * Translate a source item into one target language.
      *
-     * Creates the unpublished draft with its association to the source and
-     * sets the per-language queue state to "review", ready for translator feedback.
+     * Creates the draft with its association to the source and sets the
+     * per-language queue state to "review", ready for translator feedback.
      *
      * @param   integer                  $sourceItemId     The source item id.
      * @param   string                   $targetLanguage   The target language code, e.g. 'fr-FR'.
@@ -653,7 +654,7 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
-     * Create the unpublished draft for one target language.
+     * Create the draft for one target language.
      *
      * The draft is saved through the managing component's model so versioning, events and
      * associations run as for a hand created item. A model with an associationsContext
@@ -779,8 +780,13 @@ class TranslationModel extends BaseDatabaseModel
             $draft[$dataKey] = $translatedIds;
         }
 
-        // Keep the draft unpublished until a translator approves it.
-        $draft[(string) ($properties['stateField'] ?? '')] = 0;
+        // A new draft is held back for a translator to approve, unless the option publishes it on creation.
+        // An existing translation keeps the state it has, so re-translating never takes a live item off the site.
+        if ($draft['id'] === 0) {
+            $publishOnCreation = (bool) ComponentHelper::getParams('com_translations')->get('auto_publish', 0);
+
+            $draft[(string) ($properties['stateField'] ?? '')] = $publishOnCreation ? 1 : 0;
+        }
 
         // Force any fields the draft must hold at a fixed value, e.g. a translated menu item is never the home item.
         foreach ((array) ($properties['draftForceFields'] ?? []) as $field => $value) {
