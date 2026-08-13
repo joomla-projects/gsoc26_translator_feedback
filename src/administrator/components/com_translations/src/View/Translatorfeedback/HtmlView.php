@@ -16,6 +16,7 @@ namespace Joomla\Component\Translations\Administrator\View\Translatorfeedback;
 
 use Joomla\CMS\Document\HtmlDocument;
 use Joomla\CMS\Factory;
+use Joomla\CMS\Form\Field\EditorField;
 use Joomla\CMS\Helper\ContentHelper;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\MVC\View\HtmlView as BaseHtmlView;
@@ -83,6 +84,21 @@ class HtmlView extends BaseHtmlView
         // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
         if ($this->isSite) {
             $webAssetManager->useScript('webcomponent.toolbar-button');
+        }
+
+        // TinyMCE pins an editor's toolbar to the window once that editor is scrolled past. This form
+        // carries several editors, so the pinned toolbar is one the translator has scrolled away from.
+        // A field's own options are merged over the editor's defaults, so this turns pinning off here only.
+        $editorOptions = [];
+
+        foreach ($this->form->getFieldset() as $field) {
+            if ($field instanceof EditorField) {
+                $editorOptions[$field->getAttribute('name', '')] = ['toolbar_sticky' => false];
+            }
+        }
+
+        if ($editorOptions !== []) {
+            $this->getDocument()->addScriptOptions('plg_editor_tinymce', ['tinyMCE' => $editorOptions]);
         }
 
         $this->addToolbar();
