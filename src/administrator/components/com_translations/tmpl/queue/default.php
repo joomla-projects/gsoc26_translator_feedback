@@ -25,16 +25,19 @@ $contentType = (string) $this->state->get('filter.contenttype');
 
 // Icon, colour and title per translation state; the cell shows the icon alone, so the title carries
 // the state as a tooltip and to a screen reader. No state is told apart by its colour alone.
+// Review is the one state waiting on a person, so it takes the only warm colour in the grid.
+// Atum's dark theme mutes info to a translucent white, so it is not used here.
 // The two states the editor leads to name the action that reached them, which the short labels the
 // status filter shares do not.
-// Atum mutes bg-info to a translucent grey inside a table body, so it is not used here.
+// The colour is carried on the icon rather than a filled badge, so a cell sits on the row's own
+// background, as core's tbody-icon does.
 $stateIcons = [
-    ''            => ['icon' => 'icon-circle', 'class' => 'bg-secondary', 'title' => 'COM_TRANSLATIONS_STATUS_NONE'],
-    'pending'     => ['icon' => 'icon-clock', 'class' => 'bg-warning', 'title' => 'COM_TRANSLATIONS_STATUS_PENDING'],
-    'translating' => ['icon' => 'icon-cogs', 'class' => 'bg-warning', 'title' => 'COM_TRANSLATIONS_STATUS_TRANSLATING'],
-    'review'      => ['icon' => 'icon-pencil', 'class' => 'bg-primary', 'title' => 'COM_TRANSLATIONS_STATUS_REVIEW'],
-    'approved'    => ['icon' => 'icon-check', 'class' => 'bg-primary', 'title' => 'COM_TRANSLATIONS_STATUS_APPROVED_DESC'],
-    'published'   => ['icon' => 'icon-check-circle', 'class' => 'bg-success', 'title' => 'COM_TRANSLATIONS_STATUS_PUBLISHED_DESC'],
+    ''            => ['icon' => 'icon-circle', 'class' => 'text-secondary', 'title' => 'COM_TRANSLATIONS_STATUS_NONE'],
+    'pending'     => ['icon' => 'icon-clock', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_PENDING'],
+    'translating' => ['icon' => 'icon-cogs', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_TRANSLATING'],
+    'review'      => ['icon' => 'icon-pencil', 'class' => 'text-warning', 'title' => 'COM_TRANSLATIONS_STATUS_REVIEW'],
+    'approved'    => ['icon' => 'icon-check', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_APPROVED_DESC'],
+    'published'   => ['icon' => 'icon-check-circle', 'class' => 'text-success', 'title' => 'COM_TRANSLATIONS_STATUS_PUBLISHED_DESC'],
 ];
 ?>
 
@@ -123,15 +126,16 @@ $stateIcons = [
                             <td class="text-center text-nowrap">
                                 <?php if ($editable) : ?>
                                     <?php // The edit task checks the draft out before opening the editor, so the link carries the form token. ?>
-                                    <a class="badge <?php echo $stateIcon['class']; ?> text-decoration-none"
+                                    <a class="<?php echo $stateIcon['class']; ?> text-decoration-none"
                                         href="<?php echo Route::_('index.php?option=com_translations&task=translatorfeedback.edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></a>
                                 <?php elseif ($translatable) : ?>
-                                    <a class="badge <?php echo $stateIcon['class']; ?> text-decoration-none"
+                                    <?php // The script uses this class to show the cell working while the translation runs. ?>
+                                    <a class="translate-trigger <?php echo $stateIcon['class']; ?> text-decoration-none"
                                         href="<?php echo Route::_('index.php?option=com_translations&task=translation.translate&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></a>
                                 <?php else : ?>
-                                    <span class="badge <?php echo $stateIcon['class']; ?>" title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></span>
+                                    <span class="<?php echo $stateIcon['class']; ?>" title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></span>
                                 <?php endif; ?>
                                 <?php if ($marksVisibility) : ?>
                                     <?php $visibilityLabel = Text::_($isLive ? 'COM_TRANSLATIONS_TRANSLATION_LIVE' : 'COM_TRANSLATIONS_TRANSLATION_NOT_LIVE'); ?>

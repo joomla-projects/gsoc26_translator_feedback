@@ -2,21 +2,10 @@
 
 /* The queue grid, one column per target language, on a page narrower than it. */
 
-/* A badge is padded for a word, wider than it is tall. A cell holds one icon, so it takes the
-   template's own vertical padding on all four sides. */
-.com_translations #queueList .badge {
-    --badge-padding-x: var(--badge-padding-y);
-}
-
-/* Atum spaces the spans in a badge apart, which would hold the icon off centre. */
-.com_translations #queueList .badge > span {
-    margin-inline-end: 0;
-}
-
-/* Cassiopeia recolours every link on hover, so a cell keeps the colour its badge already carries.
-   Atum leaves badges out of that rule, which is the behaviour followed here. */
-.com_translations #queueList a.badge {
-    --link-hover-color: var(--badge-color);
+/* The icon is the cell's only content, so it is set larger than the row's text. */
+.com_translations #queueList td [class^="icon-"],
+.com_translations #queueList td [class*=" icon-"] {
+    font-size: 1.15em;
 }
 
 /* Both templates place the grid in a flex item, which grows with the grid unless it is allowed to shrink. */
@@ -32,9 +21,16 @@
     contain: paint;
 }
 
-/* Partition colour, taken from the template's variable with a literal fallback for when it is not defined. */
+/* Frame the grid, in the template's own rule colour with a literal fallback. */
 .com_translations #queueList {
     --tf-border: var(--border-color, #dee2e6);
+    border: 3px solid var(--tf-border);
+}
+
+/* Separate the languages from one another, so an icon is read in its own column. */
+.com_translations #queueList thead th,
+.com_translations #queueList tbody td {
+    border-right: 1px solid var(--tf-border);
 }
 
 /* Hold the source column to a share of the grid so the languages take the rest of it, spread across
@@ -43,12 +39,39 @@
     width: 30%;
 }
 
-/* Hold the source item beside its row while the languages scroll, partitioned off from them;
-   cells take their background from the template. */
+/* Hold the source item beside its row while the languages scroll; cells take their background from the template. */
 .com_translations #queueList thead th:first-child,
 .com_translations #queueList tbody th {
     position: sticky;
     left: 0;
     z-index: 2;
-    border-right: 3px solid var(--tf-border);
+}
+
+/* Positioned so each heading cell can draw the rule beneath it. */
+.com_translations #queueList thead th {
+    position: relative;
+}
+
+/* Mark the grid's two axes off from its body, drawn by the cell so the rule travels with a sticky column. */
+.com_translations #queueList thead th:first-child::after,
+.com_translations #queueList tbody th::after,
+.com_translations #queueList thead th::before {
+    content: "";
+    position: absolute;
+    background-color: var(--tf-border);
+}
+
+.com_translations #queueList thead th:first-child::after,
+.com_translations #queueList tbody th::after {
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 3px;
+}
+
+.com_translations #queueList thead th::before {
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: 3px;
 }
