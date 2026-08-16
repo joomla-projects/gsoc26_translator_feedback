@@ -130,7 +130,8 @@ $stateIcons = [
                                         href="<?php echo Route::_('index.php?option=com_translations&task=translatorfeedback.edit&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></a>
                                 <?php elseif ($translatable) : ?>
-                                    <a class="<?php echo $stateIcon['class']; ?> text-decoration-none"
+                                    <?php // The script uses this class to show the cell working while the translation runs. ?>
+                                    <a class="translate-trigger <?php echo $stateIcon['class']; ?> text-decoration-none"
                                         href="<?php echo Route::_('index.php?option=com_translations&task=translation.translate&id=' . (int) $item->id . '&target=' . urlencode($langCode) . '&contentType=' . urlencode($contentType) . '&' . Session::getFormToken() . '=1'); ?>"
                                         title="<?php echo $this->escape($cellTitle); ?>"><span class="<?php echo $stateIcon['icon']; ?> icon-fw" aria-hidden="true"></span><span class="visually-hidden"><?php echo $this->escape($cellTitle); ?></span></a>
                                 <?php else : ?>

@@ -115,8 +115,10 @@ class HtmlView extends BaseHtmlView
         $this->contentTypes        = $model->getContentTypes();
 
         // The stylesheet lets the grid scroll within the page and holds the source column beside its row.
+        // The script shows a cell working while its translation runs.
         $this->getDocument()->getWebAssetManager()
-            ->registerAndUseStyle('com_translations.queue', 'com_translations/queue.css');
+            ->registerAndUseStyle('com_translations.queue', 'com_translations/queue.css')
+            ->registerAndUseScript('com_translations.queue', 'com_translations/queue.js', [], ['defer' => true]);
 
         $this->addToolbar();
 
