@@ -25,15 +25,17 @@ $contentType = (string) $this->state->get('filter.contenttype');
 
 // Icon, colour and title per translation state; the cell shows the icon alone, so the title carries
 // the state as a tooltip and to a screen reader. No state is told apart by its colour alone.
+// Review is the one state waiting on a person, so it takes the only warm colour in the grid.
+// Atum's dark theme mutes info to a translucent white, so it is not used here.
 // The two states the editor leads to name the action that reached them, which the short labels the
 // status filter shares do not.
 // The colour is carried on the icon rather than a filled badge, so a cell sits on the row's own
 // background, as core's tbody-icon does.
 $stateIcons = [
     ''            => ['icon' => 'icon-circle', 'class' => 'text-secondary', 'title' => 'COM_TRANSLATIONS_STATUS_NONE'],
-    'pending'     => ['icon' => 'icon-clock', 'class' => 'text-warning', 'title' => 'COM_TRANSLATIONS_STATUS_PENDING'],
-    'translating' => ['icon' => 'icon-cogs', 'class' => 'text-warning', 'title' => 'COM_TRANSLATIONS_STATUS_TRANSLATING'],
-    'review'      => ['icon' => 'icon-pencil', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_REVIEW'],
+    'pending'     => ['icon' => 'icon-clock', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_PENDING'],
+    'translating' => ['icon' => 'icon-cogs', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_TRANSLATING'],
+    'review'      => ['icon' => 'icon-pencil', 'class' => 'text-warning', 'title' => 'COM_TRANSLATIONS_STATUS_REVIEW'],
     'approved'    => ['icon' => 'icon-check', 'class' => 'text-primary', 'title' => 'COM_TRANSLATIONS_STATUS_APPROVED_DESC'],
     'published'   => ['icon' => 'icon-check-circle', 'class' => 'text-success', 'title' => 'COM_TRANSLATIONS_STATUS_PUBLISHED_DESC'],
 ];
