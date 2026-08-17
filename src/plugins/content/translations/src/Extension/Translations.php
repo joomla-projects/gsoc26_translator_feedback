@@ -893,7 +893,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private function invalidateTranslations(int $queueId, ?int $versionId = null): void
     {
         $pendingState = 'pending';
-        $staleStates  = ['review', 'approved'];
+
+        // A published translation is updated in place, so it stays on the site.
+        $staleStates = ['review', 'approved', 'published'];
 
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
