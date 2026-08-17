@@ -161,6 +161,26 @@ data key written onto the draft to the related content type, for an article
 `{ "tags": "com_tags.tag" }`. The source's tag ids are remapped to their translations and
 written back under that key; an id with no translation yet is kept.
 
+**`linkTargets`** (object, optional) - the related items a link points at, re-pointed at their
+translations. A menu item names its target in the query of its `link` rather than in a column, so
+`associatedFields` cannot reach it. Each entry is keyed by the link's `option` and `view`, and maps
+each query parameter that carries an id to the content type that id belongs to:
+
+```json
+"com_content.category": { "id": "com_categories.category", "filter_tag": "com_tags.tag" }
+```
+
+A view can carry more than one, as a category listing does with its category and its tag filter, and
+a parameter can carry several ids, as the archived articles and tagged items views do. A parameter
+the link does not carry is skipped, and a link carrying none of them is left exactly as it is. An id
+of `0` is the root of a listing rather than an item, so it is left alone, and an id whose item has no
+translation yet keeps pointing at the source, as a foreign key does.
+
+Only views whose ids name a content type in this map can be re-pointed. A contact or news feed
+category is a `#__categories` row belonging to another extension, which `limitToExtension` excludes,
+so those menu items are left untouched. A field that lives in a menu item's `params` rather than its
+`link`, such as the featured articles view's `featured_categories`, is outside what this key reaches.
+
 **`context_tags`** (string, optional) - the type alias the item's tags are stored under in the
 content item tag map, used when reading the source's tags for `m2m_relation`. It defaults to the
 content type's own key, which is correct for an article (`com_content.article`); a com_content
@@ -188,9 +208,9 @@ category's tags are stored under `com_content.category`, so the category entry s
 
 ## Example: the menu item entry
 
-A menu item translates only its `title`. It is placed in the derived per-language menu
-at the root with `home` forced off; its `link` still points at the source content until
-the related-item remapping re-points it.
+A menu item translates only its `title`. It is placed in the derived per-language menu at the root
+with `home` forced off, and `linkTargets` re-points its `link` at the translation of whatever it
+points at, so a translated menu item opens the translated page.
 
 ```json
 "com_menus.item": {
@@ -201,6 +221,14 @@ the related-item remapping re-points it.
     "context_associations": "com_menus.item",
     "draftCopyFields": ["link", "type", "component_id", "browserNav", "access", "img", "template_style_id", "params"],
     "stateField": "published",
+    "linkTargets": {
+        "com_content.article": { "id": "com_content.article" },
+        "com_content.category": { "id": "com_categories.category", "filter_tag": "com_tags.tag" },
+        "com_content.categories": { "id": "com_categories.category" },
+        "com_content.archive": { "catid": "com_categories.category" },
+        "com_tags.tag": { "id": "com_tags.tag" },
+        "com_tags.tags": { "parent_id": "com_tags.tag" }
+    },
     "draftForceFields": { "home": 0, "parent_id": 1 },
     "languageMenu": "menutype"
 }
