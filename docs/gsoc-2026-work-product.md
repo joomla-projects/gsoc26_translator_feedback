@@ -137,39 +137,39 @@ during the programme.** The full list is here:
 I kept them small on purpose and cut them at review seams, because Herman Peeren, my mentor,
 was reading them. Roughly grouped by what they did:
 
-- **The component and the queue.** The installable component and its tables (#13), the queue
-  grid and its filters (#16), a configurable source language (#23, #106), content types as
-  tabs (#57), scoping the queue to items the component can actually translate (#129), and
-  two later passes over the grid itself (#145, #148).
+- **The component and the queue.** The installable component and its tables ([#13]), the queue
+  grid and its filters ([#16]), a configurable source language ([#23], [#106]), content types as
+  tabs ([#57]), scoping the queue to items the component can actually translate ([#129]), and
+  two later passes over the grid itself ([#145], [#148]).
 - **The editor and feedback capture.** The side-by-side editor reachable from the queue
-  (#29), saving into the draft (#33), recording feedback pairs on save (#36), editing all
-  translatable fields rather than just title and text (#59), translatable custom fields
-  (#77), and checking a draft out while it is being edited (#94).
+  ([#29]), saving into the draft ([#33]), recording feedback pairs on save ([#36]), editing all
+  translatable fields rather than just title and text ([#59]), translatable custom fields
+  ([#77]), and checking a draft out while it is being edited ([#94]).
 - **The producer.** The component-side model that creates the draft, the association and the
-  review state (#39), handing a provider one collection of strings instead of one string at a
-  time (#44), and translating in dependency order so a category exists before the article
-  that sits in it (#137).
-- **Providers and the event contracts.** The Claude translation plugin (#80), the
-  distillation plugin (#92), its rename into the `rag` group (#119), and word normalisation
-  through `onNormalise` (#120).
-- **The learning half.** The rules view and rule editing (#86), the distiller that turns
-  feedback into draft rules (#89), the retriever that puts them back into a prompt (#103),
-  sending a provider only the rules relevant to the corrections in hand (#142), and showing
-  the standard form a rule was matched on (#139).
-- **Scheduled tasks and packaging.** The distiller task (#93), the translate task (#133), and
-  packaging all six extensions into a single installable (#134).
-- **Lifecycle and re-translation.** Re-translating when a source is edited (#99, #122, #125),
-  updating an existing translation instead of duplicating it (#75), cascading trash and
-  delete through to translations (#65), remapping an article's category and tags to the
-  translated ones (#76), publishing new translations when the option is set (#146), and
-  re-translating published translations too (#149).
+  review state ([#39]), handing a provider one collection of strings instead of one string at a
+  time ([#44]), and translating in dependency order so a category exists before the article
+  that sits in it ([#137]).
+- **Providers and the event contracts.** The Claude translation plugin ([#80]), the
+  distillation plugin ([#92]), its rename into the `rag` group ([#119]), and word normalisation
+  through `onNormalise` ([#120]).
+- **The learning half.** The rules view and rule editing ([#86]), the distiller that turns
+  feedback into draft rules ([#89]), the retriever that puts them back into a prompt ([#103]),
+  sending a provider only the rules relevant to the corrections in hand ([#142]), and showing
+  the standard form a rule was matched on ([#139]).
+- **Scheduled tasks and packaging.** The distiller task ([#93]), the translate task ([#133]), and
+  packaging all six extensions into a single installable ([#134]).
+- **Lifecycle and re-translation.** Re-translating when a source is edited ([#99], [#122], [#125]),
+  updating an existing translation instead of duplicating it ([#75]), cascading trash and
+  delete through to translations ([#65]), remapping an article's category and tags to the
+  translated ones ([#76]), publishing new translations when the option is set ([#146]), and
+  re-translating published translations too ([#149]).
 - **The other content types.** Articles first, then categories, tags and menu items across
-  the queue, the editor and the opt-out toggle (#53, #68, #100, #131).
+  the queue, the editor and the opt-out toggle ([#53], [#68], [#100], [#131]).
 - **Front-end access.** Serving the translator's views on the site, so a translator with
-  ordinary edit permission never needs a backend login (#117).
-- **Documentation.** The glossary (#58), the user guide (#61), the content-type map (#64),
-  the translation-plugin guide (#87), and a pass bringing all of it back in line with what
-  had actually shipped (#143).
+  ordinary edit permission never needs a backend login ([#117]).
+- **Documentation.** The glossary ([#58]), the user guide ([#61]), the content-type map ([#64]),
+  the translation-plugin guide ([#87]), and a pass bringing all of it back in line with what
+  had actually shipped ([#143]).
 
 ### A fix for Joomla core
 
@@ -197,23 +197,23 @@ corrections come back as rules that steer the next translation.
 
 Nineteen issues are open on the repository, eleven of them labelled `enhancement`. They were
 kept back for after the submission on purpose, so the board stayed readable while the work was
-running and so anyone in the community is free to pick one up. Four of them, #150 to #153,
+running and so anyone in the community is free to pick one up. Four of them, [#150] to [#153],
 were opened by Herman after the London talk, which says something about where this can go next.
 
 The main ones fall into two groups.
 
-The first is code and architecture: a better structure for rule retrieval (#108), fully typed
-objects in place of the JSON content-type map (#138), and logging the processing data so the
-retrieval limits can be tuned against measured numbers (#144).
+The first is code and architecture: a better structure for rule retrieval ([#108]), fully typed
+objects in place of the JSON content-type map ([#138]), and logging the processing data so the
+retrieval limits can be tuned against measured numbers ([#144]).
 
 The second is functionality that makes the extension more useful day to day. The biggest is
 seeding a starting rule set out of the translations Joomla already has, in its language packs
-and in the old documentation wiki (#5, #11, #152), which is what lets a community begin with
-its own conventions instead of a blank slate, with #153 to export a rule set and share it
+and in the old documentation wiki ([#5], [#11], [#152]), which is what lets a community begin with
+its own conventions instead of a blank slate, with [#153] to export a rule set and share it
 between sites. Alongside those: pointing links inside translated text at the translated pages
-(#150), publishing a distilled rule automatically (#151), defaulting the queue filter (#97),
-locking the source language in the edit view (#43), adding content types through configuration
-(#60), and the menu follow-ups (#62, #63, #67).
+([#150]), publishing a distilled rule automatically ([#151]), defaulting the queue filter ([#97]),
+locking the source language in the edit view ([#43]), adding content types through configuration
+([#60]), and the menu follow-ups ([#62], [#63], [#67]).
 
 ## What I learned
 
@@ -284,5 +284,70 @@ To Herman Peeren, who reviewed this work throughout, asked the questions and gav
 suggestions that shaped its architecture, and held it to a standard I would not have set for
 myself. Early on he spent more than two weeks of live sessions walking me through building a
 Joomla component from the ground up, and a lot of how I think about code now came from that.
-To Charvi Mehra and Stefan Wendhausen for their guidance, and to the Joomla community for a
+To Stefan Wendhausen for the guidance along the way, and to the Joomla community for a
 genuinely welcoming first year.
+
+<!-- Pull request and issue links -->
+
+[#13]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/13
+[#16]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/16
+[#23]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/23
+[#29]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/29
+[#33]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/33
+[#36]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/36
+[#39]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/39
+[#44]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/44
+[#53]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/53
+[#57]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/57
+[#58]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/58
+[#59]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/59
+[#61]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/61
+[#64]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/64
+[#65]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/65
+[#68]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/68
+[#75]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/75
+[#76]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/76
+[#77]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/77
+[#80]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/80
+[#86]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/86
+[#87]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/87
+[#89]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/89
+[#92]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/92
+[#93]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/93
+[#94]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/94
+[#99]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/99
+[#100]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/100
+[#103]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/103
+[#106]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/106
+[#117]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/117
+[#119]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/119
+[#120]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/120
+[#122]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/122
+[#125]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/125
+[#129]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/129
+[#131]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/131
+[#133]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/133
+[#134]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/134
+[#137]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/137
+[#139]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/139
+[#142]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/142
+[#143]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/143
+[#145]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/145
+[#146]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/146
+[#148]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/148
+[#149]: https://github.com/joomla-projects/gsoc26_translator_feedback/pull/149
+[#5]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/5
+[#11]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/11
+[#43]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/43
+[#60]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/60
+[#62]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/62
+[#63]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/63
+[#67]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/67
+[#97]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/97
+[#108]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/108
+[#138]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/138
+[#144]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/144
+[#150]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/150
+[#151]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/151
+[#152]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/152
+[#153]: https://github.com/joomla-projects/gsoc26_translator_feedback/issues/153
