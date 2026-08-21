@@ -76,10 +76,10 @@ with no queue interface to trigger it yet.
   has entered the pipeline. It holds no text of its own; the text lives in the
   content items themselves.
 
-**Related content item** - a content item tied to another by a foreign key rather
-than by language, such as the category an article belongs to (`catid`) or the tags
-attached to an article. When a content item is translated, its foreign keys may need
-to be re-pointed at the translated related items.
+**Related content item** - a content item tied to another by something other than
+language, such as the category an article belongs to (`catid`), the tags attached to
+an article, or the page a menu item links to. When a content item is translated, those
+ties may need to be re-pointed at the translated related items.
 
 **Review** - a draft that is under review by a human translator. The translator
 gives feedback by editing the translated text; after that the translation can be

@@ -780,6 +780,14 @@ class TranslationModel extends BaseDatabaseModel
             $draft[$dataKey] = $translatedIds;
         }
 
+        // Repoint the target inside a link (a menu item's page) at its translation, keeping the source's when none exists yet.
+        // A link names its target in the query rather than in a column, so associatedFields cannot reach it.
+        $linkTargets = (array) ($properties['linkTargets'] ?? []);
+
+        if ($linkTargets !== []) {
+            $draft['link'] = $this->repointLinkTargets((string) ($sourceItem['link'] ?? ''), $linkTargets, $targetLanguage);
+        }
+
         // A new draft is held back for a translator to approve, unless the option publishes it on creation.
         // An existing translation keeps the state it has, so re-translating never takes a live item off the site.
         if ($draft['id'] === 0) {
@@ -877,6 +885,55 @@ class TranslationModel extends BaseDatabaseModel
         );
 
         return isset($group[$targetLanguage]) ? (int) $group[$targetLanguage] : null;
+    }
+
+    /**
+     * Repoint a link at the translations of the items it points at.
+     *
+     * The ids are read out of the link and written back rather than repointed as foreign keys. A
+     * category listing carries a tag filter beside the category, and a tag parameter carries several
+     * ids. An id whose item has no translation yet keeps pointing at the source, as a foreign key does.
+     *
+     * @param   string                                $link            The source item's link.
+     * @param   array<string, array<string, string>>  $linkTargets     The related content type per query parameter, keyed by the link's option and view.
+     * @param   string                                $targetLanguage  The target language code.
+     *
+     * @return  string  The link, each id repointed where a translation exists.
+     *
+     * @since   1.0.0
+     */
+    private function repointLinkTargets(string $link, array $linkTargets, string $targetLanguage): string
+    {
+        $arguments = [];
+        parse_str((string) parse_url(htmlspecialchars_decode($link), PHP_URL_QUERY), $arguments);
+
+        $parameters = (array) ($linkTargets[($arguments['option'] ?? '') . '.' . ($arguments['view'] ?? '')] ?? []);
+
+        // A view the map does not name, or one whose id parameters are all unset, has nothing to repoint.
+        $carried = array_intersect_key($parameters, $arguments);
+
+        if ($carried === []) {
+            return $link;
+        }
+
+        foreach ($carried as $parameter => $relatedType) {
+            $value     = $arguments[$parameter];
+            $isList    = \is_array($value);
+            $repointed = [];
+
+            foreach ($isList ? $value : [$value] as $key => $id) {
+                // Zero is the root of a listing rather than an item, so it is never repointed.
+                $repointed[$key] = (int) $id === 0
+                    ? $id
+                    : ($this->translatedRelatedId((int) $id, (string) $relatedType, $targetLanguage) ?? $id);
+            }
+
+            $arguments[$parameter] = $isList ? $repointed : $repointed[0];
+        }
+
+        // Rebuild it as com_menus does: the separator is named rather than taken from
+        // arg_separator.output, which a site can set to an entity, and the ids keep their brackets.
+        return 'index.php?' . urldecode(http_build_query($arguments, '', '&'));
     }
 
     /**
