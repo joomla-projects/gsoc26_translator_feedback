@@ -21,12 +21,11 @@ use Joomla\CMS\Extension\ComponentInterface;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
-use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Fields\Administrator\Model\FieldModel;
-use Joomla\Component\Translations\Administrator\Event\TranslateEvent;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
+use Joomla\Component\Translations\Administrator\Helper\StringTranslator;
 use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Registry\Registry;
@@ -570,13 +569,7 @@ class TranslationModel extends BaseDatabaseModel
      */
     private function translateStrings(array $strings, string $sourceLanguage, string $targetLanguage): array
     {
-        // No strings means nothing for a provider to translate.
-        if ($strings === []) {
-            return $strings;
-        }
-
         $dispatcher = $this->getDispatcher();
-        PluginHelper::importPlugin('translation', null, true, $dispatcher);
 
         // Distilled rules relevant to the item, so a provider can steer the translation.
         $rules = RuleRetriever::retrieve(
@@ -587,22 +580,7 @@ class TranslationModel extends BaseDatabaseModel
             $targetLanguage
         );
 
-        $event = new TranslateEvent('onTranslate', [
-            'sourceStrings'  => $strings,
-            'sourceLanguage' => $sourceLanguage,
-            'targetLanguage' => $targetLanguage,
-            'rules'          => $rules,
-        ]);
-        $dispatcher->dispatch('onTranslate', $event);
-
-        // Use the first provider that returned translations.
-        foreach ((array) $event->getArgument('result', []) as $providerResult) {
-            if (\is_array($providerResult) && $providerResult !== []) {
-                return $providerResult;
-            }
-        }
-
-        throw new \RuntimeException('No translation provider is enabled. Enable a translation plugin to translate content.');
+        return StringTranslator::translate($dispatcher, $strings, $sourceLanguage, $targetLanguage, $rules);
     }
 
     /**

@@ -38,7 +38,7 @@ use Joomla\Database\ParameterType;
 class DistillerModel extends BaseDatabaseModel
 {
     /**
-     * The origin recorded on a rule distilled from feedback.
+     * The origin recorded on a rule whose evidence carries no single origin of its own.
      *
      * @var    string
      * @since  0.4.0
@@ -109,15 +109,19 @@ class DistillerModel extends BaseDatabaseModel
         foreach ($this->groupByLanguage($feedback) as $targetLanguage => $rows) {
             $corrections = [];
             $rowIds      = [];
+            $origins     = [];
 
             foreach ($rows as $row) {
-                $rowIds[] = (int) $row->id;
-                $diff     = $this->diff((string) $row->machine_draft, (string) $row->human_correction);
+                $feedbackId = (int) $row->id;
+                $diff       = $this->diff((string) $row->machine_draft, (string) $row->human_correction);
 
-                $this->storeDiff((int) $row->id, $diff);
+                $rowIds[]             = $feedbackId;
+                $origins[$feedbackId] = (string) $row->source_origin;
+
+                $this->storeDiff($feedbackId, $diff);
 
                 $corrections[] = [
-                    'id'               => (int) $row->id,
+                    'id'               => $feedbackId,
                     'source_text'      => (string) $row->source_text,
                     'machine_draft'    => (string) $row->machine_draft,
                     'human_correction' => (string) $row->human_correction,
@@ -132,7 +136,7 @@ class DistillerModel extends BaseDatabaseModel
                 $targetLanguage
             );
 
-            $this->persistRules($candidates, $targetLanguage);
+            $this->persistRules($candidates, $targetLanguage, $origins);
             $this->markProcessed($rowIds);
 
             $processed += \count($rows);
@@ -452,12 +456,13 @@ class DistillerModel extends BaseDatabaseModel
      *
      * @param   array   $candidates      The rule candidates.
      * @param   string  $targetLanguage  The target language code.
+     * @param   array   $origins         The origin of each feedback row, keyed by row id.
      *
      * @return  void
      *
      * @since   0.4.0
      */
-    private function persistRules(array $candidates, string $targetLanguage): void
+    private function persistRules(array $candidates, string $targetLanguage, array $origins): void
     {
         foreach ($candidates as $candidate) {
             if (!\is_array($candidate)) {
@@ -465,7 +470,7 @@ class DistillerModel extends BaseDatabaseModel
             }
 
             try {
-                $this->saveRule($candidate, $targetLanguage);
+                $this->saveRule($candidate, $targetLanguage, $origins);
             } catch (\Throwable $e) {
                 // Skip a malformed candidate rather than lose the rest of the batch.
                 Log::add(
@@ -483,6 +488,7 @@ class DistillerModel extends BaseDatabaseModel
      *
      * @param   array   $candidate       The rule candidate.
      * @param   string  $targetLanguage  The target language code.
+     * @param   array   $origins         The origin of each feedback row, keyed by row id.
      *
      * @return  void
      *
@@ -490,7 +496,7 @@ class DistillerModel extends BaseDatabaseModel
      *
      * @since   0.4.0
      */
-    private function saveRule(array $candidate, string $targetLanguage): void
+    private function saveRule(array $candidate, string $targetLanguage, array $origins): void
     {
         /** @var RuleTable $table */
         $table       = $this->getTable('Rule', 'Administrator');
@@ -526,13 +532,41 @@ class DistillerModel extends BaseDatabaseModel
         } else {
             $data['confidence']          = (float) ($candidate['confidence'] ?? 0);
             $data['source_feedback_ids'] = $feedbackIds;
-            $data['source_origin']       = self::SOURCE_ORIGIN;
+            $data['source_origin']       = $this->originOf($feedbackIds, $origins);
             $data['state']               = 0;
         }
 
         if (!$table->bind($data) || !$table->check() || !$table->store()) {
             throw new \RuntimeException('The distilled rule could not be stored.');
         }
+    }
+
+    /**
+     * Work out the origin to record on a rule from the feedback that produced it.
+     *
+     * A rule is only as attributable as its evidence: when every correction behind it came from
+     * the same place, the rule carries that origin, so a set imported from elsewhere can later be
+     * reviewed, exported or withdrawn as a set. Mixed evidence belongs to no one source, and a
+     * rule built from it is distilled like any other.
+     *
+     * @param   int[]  $feedbackIds  The feedback rows the rule was built from.
+     * @param   array  $origins      The origin of each feedback row, keyed by row id.
+     *
+     * @return  string  The origin to record.
+     *
+     * @since   1.0.0
+     */
+    private function originOf(array $feedbackIds, array $origins): string
+    {
+        $found = [];
+
+        foreach ($feedbackIds as $feedbackId) {
+            if (isset($origins[$feedbackId])) {
+                $found[$origins[$feedbackId]] = true;
+            }
+        }
+
+        return \count($found) === 1 ? (string) array_key_first($found) : self::SOURCE_ORIGIN;
     }
 
     /**

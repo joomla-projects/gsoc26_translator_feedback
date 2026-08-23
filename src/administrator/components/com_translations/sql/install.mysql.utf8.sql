@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS `#__translations_feedback` (
   `human_correction` mediumtext NOT NULL,
   `diff_data` mediumtext,
   `target_language` char(7) NOT NULL,
+  `source_origin` varchar(20) NOT NULL DEFAULT 'distilled',
   `context_tags` varchar(500) NOT NULL DEFAULT '',
   `translator_id` int unsigned NOT NULL,
   `status` varchar(20) NOT NULL DEFAULT 'pending',

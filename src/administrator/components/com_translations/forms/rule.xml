@@ -104,8 +104,10 @@
             name="source_origin"
             type="list"
             label="COM_TRANSLATIONS_RULE_FIELD_ORIGIN_LABEL"
+            description="COM_TRANSLATIONS_RULE_FIELD_ORIGIN_DESC"
             default="manual"
             validate="options"
+            disabled="true"
             >
             <option value="manual">COM_TRANSLATIONS_RULE_ORIGIN_MANUAL</option>
             <option value="distilled">COM_TRANSLATIONS_RULE_ORIGIN_DISTILLED</option>
