@@ -43,6 +43,14 @@ class RuleModel extends AdminModel
     protected $text_prefix = 'COM_TRANSLATIONS';
 
     /**
+     * The origin recorded on a rule authored in the Rules view.
+     *
+     * @var    string
+     * @since  1.0.0
+     */
+    private const SOURCE_ORIGIN = 'manual';
+
+    /**
      * Get the edit form.
      *
      * @param   array    $data      Data for the form.
@@ -88,6 +96,25 @@ class RuleModel extends AdminModel
     }
 
     /**
+     * Save a rule.
+     *
+     * @param   array  $data  The form data.
+     *
+     * @return  boolean  True on success.
+     *
+     * @since   1.0.0
+     */
+    public function save($data)
+    {
+        // The form shows the origin but cannot set it, so a submitted one is dropped rather than
+        // trusted: an existing rule keeps what it was created with, and a new one is stamped in
+        // prepareTable.
+        unset($data['source_origin']);
+
+        return parent::save($data);
+    }
+
+    /**
      * Prepare and sanitise the table data prior to saving.
      *
      * @param   \Joomla\CMS\Table\Table  $table  A reference to a Table object.
@@ -108,6 +135,12 @@ class RuleModel extends AdminModel
             $db->setQuery($query);
 
             $table->ordering = (int) $db->loadResult() + 1;
+        }
+
+        // How a rule came to exist is a fact rather than a choice, so the form only shows it and a
+        // rule written here is authored by hand.
+        if (empty($table->id)) {
+            $table->source_origin = self::SOURCE_ORIGIN;
         }
 
         // A human authoring a rule is the strongest signal; default new rules to full confidence.
