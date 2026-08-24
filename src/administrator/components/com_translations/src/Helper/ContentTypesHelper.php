@@ -121,6 +121,9 @@ class ContentTypesHelper
     /**
      * List the content types whose items a content type's own items point at.
      *
+     * An item points at another through a foreign key, a many to many relation, or the query of a
+     * link, and all three are repointed at the related item's translation when a draft is made.
+     *
      * @param   string  $contentType  The content type key.
      *
      * @return  string[]  The related content type keys.
@@ -130,11 +133,17 @@ class ContentTypesHelper
     private static function getRelatedContentTypes(string $contentType): array
     {
         $properties = self::getProperties($contentType);
-
-        return array_values(array_unique(array_merge(
+        $related    = array_merge(
             array_values((array) ($properties['associatedFields'] ?? [])),
             array_values((array) ($properties['m2m_relation'] ?? []))
-        )));
+        );
+
+        // A link names a related type per query parameter, so each of its views holds a set of its own.
+        foreach ((array) ($properties['linkTargets'] ?? []) as $parameters) {
+            $related = array_merge($related, array_values((array) $parameters));
+        }
+
+        return array_values(array_unique($related));
     }
 
     /**

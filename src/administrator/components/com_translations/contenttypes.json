@@ -76,6 +76,14 @@
             "limitToClient": 0,
             "draftCopyFields": ["link", "type", "component_id", "browserNav", "access", "img", "template_style_id", "params"],
             "stateField": "published",
+            "linkTargets": {
+                "com_content.article": { "id": "com_content.article" },
+                "com_content.category": { "id": "com_categories.category", "filter_tag": "com_tags.tag" },
+                "com_content.categories": { "id": "com_categories.category" },
+                "com_content.archive": { "catid": "com_categories.category" },
+                "com_tags.tag": { "id": "com_tags.tag" },
+                "com_tags.tags": { "parent_id": "com_tags.tag" }
+            },
             "draftForceFields": { "home": 0, "parent_id": 1 },
             "languageMenu": "menutype"
         }
