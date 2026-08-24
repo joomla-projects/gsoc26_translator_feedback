@@ -86,9 +86,11 @@ Omit it for a type that is not offered the toggle. The toggle is submitted under
 `com_translations` form group, and no content table has a column of that name, so the flag is
 kept in the queue alone and nothing is written onto the item itself.
 
-**`stateField`** (string, required) - the publish-state column, set to `0` so the draft
-is unpublished until a translator approves it. It differs per type (`state` for
-articles, `published` for categories, tags and menu items).
+**`stateField`** (string, required) - the publish-state column. The producer writes it
+only when the draft is new: `0` so the translation waits for a translator, or `1` when
+the component is set to publish new translations. Re-translating leaves the column out
+of the save altogether, so an existing translation keeps the state it has. It differs
+per type (`state` for articles, `published` for categories, tags and menu items).
 
 **`draftCopyFields`** (array, required) - source columns copied onto the draft
 unchanged. These are the structural, untranslated fields a new item needs, such as an
