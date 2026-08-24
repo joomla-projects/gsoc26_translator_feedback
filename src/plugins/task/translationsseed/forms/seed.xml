@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fields name="params">
+		<fieldset name="task_params">
+			<field
+				name="target_language"
+				type="language"
+				label="PLG_TASK_TRANSLATIONSSEED_TARGET_LANGUAGE_LABEL"
+				description="PLG_TASK_TRANSLATIONSSEED_TARGET_LANGUAGE_DESC"
+				required="true"
+			/>
+			<field
+				name="batch"
+				type="number"
+				label="PLG_TASK_TRANSLATIONSSEED_BATCH_LABEL"
+				description="PLG_TASK_TRANSLATIONSSEED_BATCH_DESC"
+				required="true"
+				default="50"
+				min="1"
+				step="1"
+				filter="int"
+			/>
+			<field
+				name="files"
+				type="text"
+				label="PLG_TASK_TRANSLATIONSSEED_FILES_LABEL"
+				description="PLG_TASK_TRANSLATIONSSEED_FILES_DESC"
+				filter="string"
+			/>
+		</fieldset>
+	</fields>
+</form>

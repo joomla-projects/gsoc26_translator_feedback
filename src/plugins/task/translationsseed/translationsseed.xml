@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<extension type="plugin" group="task" method="upgrade">
+	<name>plg_task_translationsseed</name>
+	<creationDate>2026-08</creationDate>
+	<author>Joomla! Project</author>
+	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
+	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
+	<version>1.0.0</version>
+	<description>PLG_TASK_TRANSLATIONSSEED_XML_DESCRIPTION</description>
+	<namespace path="src">Joomla\Plugin\Task\TranslationsSeed</namespace>
+	<files>
+		<folder plugin="translationsseed">services</folder>
+		<folder>src</folder>
+		<folder>forms</folder>
+		<folder>sql</folder>
+	</files>
+	<install>
+		<sql>
+			<file driver="mysql" charset="utf8">sql/install.mysql.utf8.sql</file>
+		</sql>
+	</install>
+	<uninstall>
+		<sql>
+			<file driver="mysql" charset="utf8">sql/uninstall.mysql.utf8.sql</file>
+		</sql>
+	</uninstall>
+	<languages>
+		<language tag="en-GB">language/en-GB/plg_task_translationsseed.ini</language>
+		<language tag="en-GB">language/en-GB/plg_task_translationsseed.sys.ini</language>
+	</languages>
+</extension>
