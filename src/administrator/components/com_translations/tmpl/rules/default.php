@@ -221,3 +221,12 @@ if ($saveOrder && !empty($this->items)) {
         </div>
     </div>
 </form>
+
+<?php // Carries the export, so a download does not leave the list form pointed at it. ?>
+<?php if (!$this->isSite) : ?>
+    <form action="<?php echo Route::_('index.php?option=com_translations&view=rules'); ?>" method="post" name="exportForm" id="exportForm">
+        <input type="hidden" name="task" value="">
+        <input type="hidden" name="cids" value="">
+        <?php echo HTMLHelper::_('form.token'); ?>
+    </form>
+<?php endif; ?>
