@@ -184,6 +184,40 @@ applies to its other forms as well. A rule for "article" therefore also applies 
 text says "articles". The component works these forms out once per word and stores them, so
 the same word costs nothing the next time.
 
+### Carrying rules between sites
+
+A rule set your community has built is worth more than one site. The Rules view can write its
+rules out as a file and read one back.
+
+**Export** sends what the list is currently showing, so the search box and the type, language,
+origin and status filters decide what goes into the file. Tick some rows first and you get only
+those. A set holding a single language is named after it.
+
+The file describes what the rules are, not where they came from on your site. Ids, the feedback a
+rule was distilled from, who created it and when, and the manual ordering all stay behind, because
+they mean nothing anywhere else. The status stays behind too, and is chosen when the file is read.
+What each rule does keep is its **origin**, so a set that arrived from elsewhere can still be told
+apart later.
+
+**Import** reads such a file back. It needs the Create permission, since it makes rules.
+
+A rule the site already has is passed over rather than written twice, and you are told how many
+were. Rules are matched on what they are matched *against* rather than on their name, because the
+wording of a name changes every time a rule is restated: a terminology or preservation rule by its
+term, in the standard form where there is one, and a style rule by its text, both within one target
+language and rule type.
+
+Three things are reported separately, because each one is a decision waiting for you:
+
+- A match on a rule you have **trashed** is named and left in the trash. Throwing a rule away is a
+  deliberate answer, so an import does not undo it.
+- A rule for a **content language this site does not have** is refused. It would store perfectly
+  well and then never be used, which is worse than being told.
+- A rule the component cannot accept, such as one with no target term, is refused with the reason.
+
+Imported rules arrive **unpublished** unless you choose otherwise, for the same reason distilled
+ones do: nothing reaches a translation until a person has read it.
+
 ### Marking an item as "no need for translation"
 
 On a source item's edit form, in the Translations tab, a toggle marks the item as one that
