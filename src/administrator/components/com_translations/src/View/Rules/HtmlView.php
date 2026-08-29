@@ -97,9 +97,13 @@ class HtmlView extends BaseHtmlView
         $this->activeFilters = $model->getActiveFilters();
         $this->isSite        = Factory::getApplication()->isClient('site');
 
-        // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
         if ($this->isSite) {
+            // The site renders no toolbar, so the actions sit in the form as toolbar buttons of their own.
             $this->getDocument()->getWebAssetManager()->useScript('webcomponent.toolbar-button');
+        } else {
+            // The script carries the ticked rules across to the export form.
+            $this->getDocument()->getWebAssetManager()
+                ->registerAndUseScript('com_translations.rules', 'com_translations/rules.js', [], ['defer' => true]);
         }
 
         $this->addToolbar();
@@ -126,6 +130,16 @@ class HtmlView extends BaseHtmlView
             // Run the distiller over pending feedback on demand, ahead of the scheduled task.
             ToolbarHelper::custom('distiller.distill', 'refresh', '', 'COM_TRANSLATIONS_DISTILL_NOW', false);
         }
+
+        /** @var \Joomla\CMS\Document\HtmlDocument $document */
+        $document = $this->getDocument();
+
+        // The reply is a file, so this posts a form of its own and leaves the list form untouched.
+        $document->getToolbar()
+            ->standardButton('download', 'COM_TRANSLATIONS_RULES_EXPORT', 'ruleset.export')
+            ->icon('icon-download')
+            ->listCheck(false)
+            ->form('exportForm');
 
         if ($canDo->get('core.edit.state')) {
             ToolbarHelper::publishList('rules.publish');

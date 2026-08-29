@@ -84,6 +84,7 @@ class RulesModel extends ListModel
         $id .= ':' . $this->getState('filter.rule_type');
         $id .= ':' . $this->getState('filter.target_language');
         $id .= ':' . $this->getState('filter.source_origin');
+        $id .= ':' . serialize($this->getState('filter.rule_ids'));
 
         return parent::getStoreId($id);
     }
@@ -150,6 +151,11 @@ class RulesModel extends ListModel
         if ($origin = $this->getState('filter.source_origin')) {
             $query->where($db->quoteName('a.source_origin') . ' = :origin')
                 ->bind(':origin', $origin);
+        }
+
+        // Limit to named rules, so an export can carry a selection rather than a whole filter.
+        if ($ruleIds = $this->getState('filter.rule_ids')) {
+            $query->whereIn($db->quoteName('a.id'), $ruleIds);
         }
 
         // Filter by search in the name and term columns.
