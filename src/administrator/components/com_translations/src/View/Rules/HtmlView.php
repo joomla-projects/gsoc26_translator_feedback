@@ -141,6 +141,18 @@ class HtmlView extends BaseHtmlView
             ->listCheck(false)
             ->form('exportForm');
 
+        if ($canDo->get('core.create')) {
+            // The upload sits in a dialog over the list, so a set is read where the rules are shown.
+            $document->getToolbar()
+                ->popupButton('import', 'COM_TRANSLATIONS_RULES_IMPORT')
+                ->icon('icon-upload')
+                ->popupType('inline')
+                ->url('#joomla-dialog-import')
+                ->textHeader(Text::_('COM_TRANSLATIONS_RULES_IMPORT'))
+                ->modalWidth('600px')
+                ->modalHeight('fit-content');
+        }
+
         if ($canDo->get('core.edit.state')) {
             ToolbarHelper::publishList('rules.publish');
             ToolbarHelper::unpublishList('rules.unpublish');
