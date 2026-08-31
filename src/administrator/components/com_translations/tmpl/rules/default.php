@@ -230,3 +230,40 @@ if ($saveOrder && !empty($this->items)) {
         <?php echo HTMLHelper::_('form.token'); ?>
     </form>
 <?php endif; ?>
+
+<?php // Shown by the toolbar's Import button, in a dialog over the list rather than a page of its own. ?>
+<?php if (!$this->isSite && $canCreate) : ?>
+    <template id="joomla-dialog-import">
+        <form
+            class="p-3"
+            enctype="multipart/form-data"
+            action="<?php echo Route::_('index.php?option=com_translations&view=rules'); ?>"
+            method="post"
+            name="importForm"
+            id="importForm"
+        >
+            <div class="mb-3">
+                <label for="rules_file" class="form-label">
+                    <?php echo Text::_('COM_TRANSLATIONS_RULES_IMPORT_FILE'); ?>
+                </label>
+                <input class="form-control" type="file" id="rules_file" name="rules_file" accept=".json">
+            </div>
+            <div class="mb-3">
+                <label for="import_state" class="form-label">
+                    <?php echo Text::_('COM_TRANSLATIONS_RULES_IMPORT_STATE'); ?>
+                </label>
+                <select class="form-select" id="import_state" name="state">
+                    <option value="0"><?php echo Text::_('JUNPUBLISHED'); ?></option>
+                    <option value="1"><?php echo Text::_('JPUBLISHED'); ?></option>
+                </select>
+                <small class="form-text"><?php echo Text::_('COM_TRANSLATIONS_RULES_IMPORT_STATE_DESC'); ?></small>
+            </div>
+            <button type="submit" class="btn btn-primary">
+                <span class="icon-upload" aria-hidden="true"></span>
+                <?php echo Text::_('COM_TRANSLATIONS_RULES_IMPORT_SUBMIT'); ?>
+            </button>
+            <input type="hidden" name="task" value="ruleset.import">
+            <?php echo HTMLHelper::_('form.token'); ?>
+        </form>
+    </template>
+<?php endif; ?>
