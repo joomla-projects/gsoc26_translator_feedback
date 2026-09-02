@@ -43,7 +43,7 @@ class TargetlanguageField extends ContentlanguageField
     protected function getOptions()
     {
         $sourceLanguage = (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
-        $excluded       = ['', '*', $sourceLanguage];
+        $excluded       = ['*', $sourceLanguage];
 
         return array_values(
             array_filter(

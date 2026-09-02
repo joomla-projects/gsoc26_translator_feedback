@@ -29,7 +29,8 @@
         </field>
         <field
             name="target_language"
-            type="contentlanguage"
+            type="targetlanguage"
+            addfieldprefix="Joomla\Component\Translations\Administrator\Field"
             label="JOPTION_FILTER_LANGUAGE"
             class="js-select-submit-on-change"
             >
