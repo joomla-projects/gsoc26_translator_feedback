@@ -162,10 +162,18 @@ language each. A rule has a type:
   A style rule has no term; it applies to the whole language.
 
 Rules made from feedback arrive **unpublished**, so nothing the component learns is used
-until a person reads it and publishes it. You can edit any rule, change its type, publish
-it, unpublish it or trash it. You can also write a rule by hand, which is useful for a
-convention your community already knows without waiting for someone to correct a
-translation first.
+until a person reads it and publishes it. The **Auto-Publish New Rules** option (Options)
+changes that: with it on, a distilled rule reaches the next translation without waiting to
+be read, which suits a site that would rather keep the system moving and review the rules
+afterwards.
+
+The option applies only as a rule is created. When the distiller later refines a rule it
+already wrote, that rule keeps the state it has, so unpublishing or trashing one is never
+undone by a later run.
+
+You can edit any rule, change its type, publish it, unpublish it or trash it. You can also
+write a rule by hand, which is useful for a convention your community already knows without
+waiting for someone to correct a translation first.
 
 Each rule also carries a confidence, between 0 and 1, which is the distiller's own estimate
 of how well established the convention looked. It is there to help you decide what to
