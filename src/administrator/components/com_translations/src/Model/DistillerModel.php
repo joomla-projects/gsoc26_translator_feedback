@@ -26,12 +26,13 @@ use Joomla\Component\Translations\Administrator\Table\RuleTable;
 use Joomla\Database\ParameterType;
 
 /**
- * Distiller model: turns translator feedback into draft translation rules.
+ * Distiller model: turns translator feedback into translation rules.
  *
  * Reads a batch of pending feedback, focuses each correction with a diff, asks the
- * "rag" plugin group to distil rules from it, and writes the results as
- * unpublished (state 0) draft rules for review in the Rules view. All provider-agnostic
- * work lives here; only the LLM call belongs to a plugin, behind the onDistil event.
+ * "rag" plugin group to distil rules from it, and writes the results for review in the
+ * Rules view, unpublished unless the option publishes them on creation. All
+ * provider-agnostic work lives here; only the LLM call belongs to a plugin, behind the
+ * onDistil event.
  *
  * @since  0.4.0
  */
@@ -483,8 +484,8 @@ class DistillerModel extends BaseDatabaseModel
     }
 
     /**
-     * Save one rule candidate: refine an existing rule when the candidate carries its id,
-     * else insert a new draft (state 0) for review.
+     * Save one rule candidate: refine an existing rule when the candidate carries its id, else
+     * insert a new one, held back for review unless the option publishes it on creation.
      *
      * @param   array   $candidate       The rule candidate.
      * @param   string  $targetLanguage  The target language code.
@@ -530,10 +531,13 @@ class DistillerModel extends BaseDatabaseModel
             $data['confidence']          = max((float) $table->confidence, (float) ($candidate['confidence'] ?? 0));
             $data['source_feedback_ids'] = $this->mergeFeedbackIds($table->source_feedback_ids, $feedbackIds);
         } else {
+            // A new rule is held back for review, unless the option publishes it on creation.
+            $publishOnCreation = (bool) ComponentHelper::getParams('com_translations')->get('auto_publish_rules', 0);
+
             $data['confidence']          = (float) ($candidate['confidence'] ?? 0);
             $data['source_feedback_ids'] = $feedbackIds;
             $data['source_origin']       = $this->originOf($feedbackIds, $origins);
-            $data['state']               = 0;
+            $data['state']               = $publishOnCreation ? 1 : 0;
         }
 
         if (!$table->bind($data) || !$table->check() || !$table->store()) {

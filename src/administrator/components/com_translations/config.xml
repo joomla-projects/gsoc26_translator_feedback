@@ -26,6 +26,17 @@
 			<option value="0">JNO</option>
 			<option value="1">JYES</option>
 		</field>
+		<field
+			name="auto_publish_rules"
+			type="radio"
+			layout="joomla.form.field.radio.switcher"
+			label="COM_TRANSLATIONS_CONFIG_AUTO_PUBLISH_RULES_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_AUTO_PUBLISH_RULES_DESC"
+			default="0"
+		>
+			<option value="0">JNO</option>
+			<option value="1">JYES</option>
+		</field>
 	</fieldset>
 
 	<fieldset
