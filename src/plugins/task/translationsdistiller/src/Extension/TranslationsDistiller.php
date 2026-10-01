@@ -86,7 +86,7 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
     protected function distill(ExecuteTaskEvent $event): int
     {
         $params    = $event->getArgument('params');
-        $batchSize = max(1, (int) ($params->batch ?? 20));
+        $batchSize = max(1, (int) ($params->batch ?? 10));
         $language  = $this->getApplication()->getLanguage();
 
         /** @var ComponentInterface&MVCFactoryServiceInterface $component */
