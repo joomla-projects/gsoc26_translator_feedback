@@ -20,17 +20,18 @@ use Joomla\Database\ParameterType;
 /**
  * Seeds the translation queue from associations that already exist on the site.
  *
- * A source item translated through #__associations before the component was installed
- * has no queue rows, so the grid shows it as "No translation yet" and offers to translate
- * it again. Run once from the install script, this reflects those translations in the
- * queue so they are not re-translated.
+ * A source item translated through #__associations before the component handled its
+ * content type has no queue rows, so the grid shows it as "No translation yet" and offers
+ * to translate it again. Run from the install script on every install and update, this
+ * reflects those translations in the queue so they are not re-translated. Existing rows
+ * are left as they are.
  *
  * @since  0.7.0
  */
 class QueueBackfillHelper
 {
     /**
-     * Content types seeded on install from their existing associations.
+     * Content types seeded from their existing associations.
      *
      * @var    string[]
      * @since  0.7.0

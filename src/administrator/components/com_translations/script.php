@@ -23,7 +23,7 @@ use Joomla\DI\ServiceProviderInterface;
 /**
  * Installation script for com_translations.
  *
- * On a first install it reflects translations that already exist through
+ * On install and update it reflects translations that already exist through
  * #__associations in the queue, so they are not shown as untranslated.
  *
  * There exists an InstallerScriptTrait since Joomla 6.0.0, but we are implementing
@@ -135,8 +135,8 @@ return new class () implements ServiceProviderInterface {
                  */
                 public function postflight(string $type, InstallerAdapter $adapter): bool
                 {
-                    // Seed the queue from pre-existing associations once, on a first install.
-                    if ($type !== 'install' && $type !== 'discover_install') {
+                    // Uninstall has already dropped the tables, so there is nothing to seed.
+                    if ($type === 'uninstall') {
                         return true;
                     }
 
