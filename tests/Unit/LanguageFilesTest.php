@@ -14,6 +14,7 @@ namespace Joomla\Component\Translations\Tests\Unit;
 
 use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\IniWriter;
 use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\LanguageFileTranslator;
+use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\LanguagePackage;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -146,5 +147,53 @@ final class LanguageFilesTest extends TestCase
             'a changed placeholder' => ['%s items', '%d items'],
             'a lost tag'            => ['<em>Note</em>', 'Let op'],
         ];
+    }
+
+    /**
+     * An installable package puts a translation where the site keeps its en-GB original.
+     *
+     * @param   string  $source    The original, relative to the site root.
+     * @param   string  $expected  The folder the translation goes in, relative to the site root.
+     *
+     * @return  void
+     *
+     * @dataProvider  installFolders
+     *
+     * @since   1.4.11
+     */
+    public function testATranslationIsInstalledNextToItsOriginal(string $source, string $expected): void
+    {
+        $this->assertSame($expected, LanguagePackage::installFolder(JPATH_ROOT . '/' . $source, 'nl-NL'));
+    }
+
+    /**
+     * Originals in the administrator's, the site's and an extension's own language folder.
+     *
+     * @return  array<string, array{0: string, 1: string}>
+     *
+     * @since   1.4.11
+     */
+    public static function installFolders(): array
+    {
+        return [
+            'the administrator'       => ['administrator/language/en-GB/com_translations.ini', 'administrator/language/nl-NL'],
+            'the site'                => ['language/en-GB/pkg_translations.sys.ini', 'language/nl-NL'],
+            'an extension\'s own'     =>['plugins/task/translationsseed/language/en-GB/plg_task_translationsseed.ini', 'plugins/task/translationsseed/language/nl-NL'],
+            'Windows path separators' => ['administrator\\language\\en-GB\\com_translations.ini', 'administrator/language/nl-NL'],
+        ];
+    }
+
+    /**
+     * A file outside a language folder of the site is not installed anywhere.
+     *
+     * @return  void
+     *
+     * @since   1.4.11
+     */
+    public function testAFileOutsideALanguageFolderIsRefused(): void
+    {
+        $this->expectException(\RuntimeException::class);
+
+        LanguagePackage::installFolder('/elsewhere/language/en-GB/com_translations.ini', 'nl-NL');
     }
 }

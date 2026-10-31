@@ -177,12 +177,25 @@ from the core language packs.
    Files** task. **Languages** empty means every published content language except en-GB;
    **Strings per Request** and **Time per Run** work as in the seed task. Let Web Cron run it, or
    press **Run Test** until the log says nothing is left.
-3. Open the task and press **Download the Language Files**. It needs permission to manage
-   Scheduled Tasks.
-4. Unpack the archive into `src/`: every path in it is the path the file has here, such as
-   `plugins/task/translationsdistiller/language/ar-AA/plg_task_translationsdistiller.ini`. Its
-   `README.md` lists the `<language>` lines to add to each manifest - Joomla only installs the
-   language files a manifest names - and how complete each language is.
+3. Open the task. It shows how far each language has got, and offers the files in three ways,
+   all made from the stored translations, so they can be fetched again at any time. Each needs
+   permission to manage Scheduled Tasks.
+   - **Download All for the Repository** gives one zip for this repository. Unpack it into
+     `src/`: every path in it is the path the file has here, such as
+     `plugins/task/translationsdistiller/language/ar-AA/plg_task_translationsdistiller.ini`. Its
+     `README.md` lists the `<language>` lines to add to each manifest - Joomla only installs the
+     language files a manifest names - and how complete each language is.
+   - **Download Package**, per language, gives an installable zip: a file extension
+     `files_translatorfeedback_<tag>` (for example `files_translatorfeedback_nl-nl`) that puts
+     each translated file where a site keeps its en-GB original, with the tag in place of en-GB.
+     Install it on any site that has the package, through the normal extension installer.
+   - **Install on This Site**, per language, installs that same package here straight away,
+     through Joomla's installer, and needs permission to manage extensions as well. The column
+     **Installed Here** shows the version installed.
+
+   The package has the same element every time, so a newer one of a language replaces the older
+   one, and uninstalling it removes its files. A language file goes into the package only when it
+   has a translated string.
 
 The task reads the en-GB files the site has installed: the package's own, every extension
 installed with it, and the seed plugin's. It sends them through the component's own route - the

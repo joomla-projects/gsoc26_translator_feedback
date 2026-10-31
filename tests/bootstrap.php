@@ -44,6 +44,10 @@ if (!\defined('JPATH_SITE')) {
     \define('JPATH_SITE', TRANSLATIONS_TEST_SRC);
 }
 
+if (!\defined('JPATH_ROOT')) {
+    \define('JPATH_ROOT', TRANSLATIONS_TEST_SRC);
+}
+
 require_once \dirname(__DIR__) . '/vendor/autoload.php';
 
 // Before any package class is autoloaded, so a parent class it extends is there.
