@@ -8,7 +8,7 @@
 	<packager>Joomla! Project</packager>
 	<packagerurl>https://github.com/joomla-projects/gsoc26_translator_feedback</packagerurl>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-	<version>1.4.10</version>
+	<version>1.4.11</version>
 	<description>PKG_TRANSLATIONS_XML_DESCRIPTION</description>
 	<files>
 		<!-- The id of each extension is the element Joomla stores it under -->

@@ -5,7 +5,7 @@
 	<author>Joomla! Project</author>
 	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-	<version>1.0.0</version>
+	<version>1.1.0</version>
 	<description>PLG_TASK_TRANSLATIONSLANGUAGEFILES_XML_DESCRIPTION</description>
 	<namespace path="src">Joomla\Plugin\Task\TranslationsLanguageFiles</namespace>
 	<files>

@@ -8,12 +8,11 @@
         <type>plugin</type>
         <folder>task</folder>
         <client>site</client>
-        <version>1.0.0</version>
+        <version>1.1.0</version>
         <infourl title="Translator Feedback">https://github.com/joomla-projects/gsoc26_translator_feedback</infourl>
         <downloads>
-            <downloadurl type="full" format="zip">https://github.com/joomla-projects/gsoc26_translator_feedback/releases/download/v1.4.10/plg_task_translationslanguagefiles-1.0.0.zip</downloadurl>
+            <downloadurl type="full" format="zip">https://github.com/joomla-projects/gsoc26_translator_feedback/releases/download/v1.4.11/plg_task_translationslanguagefiles-1.1.0.zip</downloadurl>
         </downloads>
-        <sha512>10f9c381dde38ca93db1e41e43f0ea2579491afd2954219e05c220326ef7ccbcef3cc736babecdf2ea6f5089581d0420d3dd7e20cb3f55d10eeab498b84c7d48</sha512>
         <tags>
             <tag>stable</tag>
         </tags>
