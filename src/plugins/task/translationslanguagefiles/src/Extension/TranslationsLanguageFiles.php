@@ -19,6 +19,8 @@ use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Event\Plugin\AjaxEvent;
 use Joomla\CMS\Factory;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\CMS\Session\Session;
+use Joomla\CMS\Uri\Uri;
 use Joomla\Component\Scheduler\Administrator\Event\ExecuteTaskEvent;
 use Joomla\Component\Scheduler\Administrator\Task\Status;
 use Joomla\Component\Scheduler\Administrator\Traits\TaskPluginTrait;
@@ -30,6 +32,7 @@ use Joomla\Event\DispatcherInterface;
 use Joomla\Event\SubscriberInterface;
 use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\LanguageFileTranslator;
 use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\LanguageFilesArchive;
+use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\LanguagePackage;
 use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\PackageLanguageFiles;
 
 /**
@@ -39,7 +42,9 @@ use Joomla\Plugin\Task\TranslationsLanguageFiles\Helper\PackageLanguageFiles;
  * editor only works when the screens around it are in that language too, so the package needs
  * its language files in every language it is used in. This plugin makes them on a site that has
  * the rules to make them well - guide.joomla.org, whose rules are learned from the core language
- * packs - and offers them as one download, laid out like the package's src folder.
+ * packs. The translations are stored, so they can be delivered at any time: as one download laid
+ * out like the package's src folder, as an installable package per language, or installed on
+ * this site directly.
  *
  * @since  1.0.0
  */
@@ -48,7 +53,15 @@ final class TranslationsLanguageFiles extends CMSPlugin implements SubscriberInt
     use TaskPluginTrait;
 
     /**
-     * Where the administrator downloads the translated files.
+     * The start of the element of the installable packages, before the language tag.
+     *
+     * @var    string
+     * @since  1.1.0
+     */
+    public const PACKAGE_ELEMENT = 'translatorfeedback';
+
+    /**
+     * Where the administrator downloads or installs the translated files.
      *
      * @var    string
      * @since  1.0.0
@@ -112,7 +125,7 @@ final class TranslationsLanguageFiles extends CMSPlugin implements SubscriberInt
             'onTaskOptionsList'               => 'advertiseRoutines',
             'onExecuteTask'                   => 'standardRoutineHandler',
             'onContentPrepareForm'            => 'enhanceTaskItemForm',
-            'onAjaxTranslationslanguagefiles' => 'download',
+            'onAjaxTranslationslanguagefiles' => 'deliver',
         ];
     }
 
@@ -273,17 +286,22 @@ final class TranslationsLanguageFiles extends CMSPlugin implements SubscriberInt
     }
 
     /**
-     * Send the translated language files as one archive.
+     * Deliver the stored translations in one of three ways.
      *
-     * Reached through com_ajax in the administrator, by someone who may manage scheduled tasks.
+     * Reached through com_ajax in the administrator, by someone who may manage scheduled tasks:
+     * deliver=archive (the default) sends one zip laid out like the package's src folder, for the
+     * repository; deliver=package sends the installable package of one language; deliver=install
+     * installs that package on this site, which also needs permission to manage extensions and a
+     * form token, and returns to the page it came from. Each works from the stored translations, so
+     * it can be asked for again at any time.
      *
      * @param   AjaxEvent  $event  The onAjaxTranslationslanguagefiles event.
      *
      * @return  void
      *
-     * @since   1.0.0
+     * @since   1.1.0
      */
-    public function download(AjaxEvent $event): void
+    public function deliver(AjaxEvent $event): void
     {
         $app = $this->getApplication();
 
@@ -294,16 +312,85 @@ final class TranslationsLanguageFiles extends CMSPlugin implements SubscriberInt
         }
 
         $translator = new LanguageFileTranslator($this->database, Factory::getContainer()->get(DispatcherInterface::class));
-        $path       = (new LanguageFilesArchive($this->database, $translator))->build();
+        $input      = $app->getInput();
+        $deliver    = $input->getCmd('deliver', 'archive');
 
+        if ($deliver === 'archive') {
+            $this->send($app, (new LanguageFilesArchive($this->database, $translator))->build(), LanguageFilesArchive::fileName());
+        }
+
+        $language = $input->getString('language', '');
+
+        if (!\in_array($deliver, ['package', 'install'], true) || !\in_array($language, self::targetLanguages($this->database), true)) {
+            throw new \RuntimeException($app->getLanguage()->_('JERROR_LAYOUT_PAGE_NOT_FOUND'), 404);
+        }
+
+        $package = self::package($this->database, $translator);
+
+        if ($deliver === 'package') {
+            $this->send($app, $package->build($language), $package->fileName($language));
+        }
+
+        if (!Session::checkToken('get') || !$app->getIdentity()->authorise('core.manage', 'com_installer')) {
+            throw new \RuntimeException($app->getLanguage()->_('JERROR_ALERTNOAUTHOR'), 403);
+        }
+
+        try {
+            if ($package->install($language)) {
+                $app->enqueueMessage(
+                    \sprintf($app->getLanguage()->_('PLG_TASK_TRANSLATIONSLANGUAGEFILES_INSTALLED'), $language, 'files_' . $package->element($language)),
+                    'success'
+                );
+            } else {
+                $app->enqueueMessage(\sprintf($app->getLanguage()->_('PLG_TASK_TRANSLATIONSLANGUAGEFILES_INSTALL_FAILED'), $language), 'error');
+            }
+        } catch (\RuntimeException $e) {
+            $app->enqueueMessage($e->getMessage(), 'error');
+        }
+
+        $return = (string) base64_decode($input->getBase64('return', ''), true);
+
+        $app->redirect($return !== '' && Uri::isInternal($return) ? $return : 'index.php?option=com_scheduler&view=tasks');
+    }
+
+    /**
+     * The installable packages of the translations, one per language.
+     *
+     * @param   DatabaseInterface       $db          The site's database.
+     * @param   LanguageFileTranslator  $translator  Where the translations are kept.
+     *
+     * @return  LanguagePackage
+     *
+     * @since   1.1.0
+     */
+    public static function package(DatabaseInterface $db, LanguageFileTranslator $translator): LanguagePackage
+    {
+        return new LanguagePackage($db, $translator, PackageLanguageFiles::discover($db), self::PACKAGE_ELEMENT, 'Translator Feedback');
+    }
+
+    /**
+     * Send a zip and end the request.
+     *
+     * @param   WebApplicationInterface  $app       The application to send it with.
+     * @param   string                   $path      The zip, a temporary file that is removed once it is sent.
+     * @param   string                   $fileName  The name to offer it under.
+     *
+     * @return  never
+     *
+     * @since   1.1.0
+     */
+    private function send(WebApplicationInterface $app, string $path, string $fileName): never
+    {
         $app->setHeader('Content-Type', 'application/zip', true);
-        $app->setHeader('Content-Disposition', 'attachment; filename="' . LanguageFilesArchive::fileName() . '"', true);
+        $app->setHeader('Content-Disposition', 'attachment; filename="' . $fileName . '"', true);
         $app->setHeader('Content-Length', (string) filesize($path), true);
         $app->sendHeaders();
         readfile($path);
         unlink($path);
 
         $app->close();
+
+        exit;
     }
 
     /**
