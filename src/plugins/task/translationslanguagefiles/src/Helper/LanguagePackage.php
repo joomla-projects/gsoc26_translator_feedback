@@ -224,7 +224,7 @@ final class LanguagePackage
     public static function installFolder(string $source, string $language): string
     {
         $root   = str_replace('\\', '/', JPATH_ROOT) . '/';
-        $folder = str_replace('\\', '/', \dirname($source));
+        $folder = \dirname(str_replace('\\', '/', $source));
 
         if (!str_starts_with($folder, $root) || basename($folder) !== 'en-GB') {
             throw new \RuntimeException(\sprintf('%s is not in a language folder of this site.', $source));
