@@ -35,7 +35,8 @@ use Joomla\Database\ParameterType;
  * it: one row per distinct correction, with the number of places it was made, so the distiller
  * learns from the correction itself rather than from whole articles that differ in it. A run that
  * runs out of time leaves the rest to the next run; a field that holds its correction already is
- * passed over, so running a file again changes nothing.
+ * passed over, so running a file again changes nothing. Runs are sized for the web as well as the
+ * command line: what is done is recognised from a few bulk queries, and only saving takes time.
  *
  * @since  1.5.0
  */
@@ -51,7 +52,7 @@ class CorrectionsModel extends BaseDatabaseModel
      * @param   CMSApplicationInterface  $application  The application, used to boot the managing components.
      *
      * @return  array{busy: bool, applied: int, done: int, changed: string[], missing: string[], locked: string[],
-     *                failed: string[], remaining: int, feedback: int, lastError: string}
+     *                failed: string[], remaining: int, feedback: int, feedbackPending: bool, lastError: string}
      *
      * @throws  \RuntimeException  When the file cannot be read or is not a corrections file.
      *
@@ -61,7 +62,7 @@ class CorrectionsModel extends BaseDatabaseModel
     {
         $result = [
             'busy' => false, 'applied' => 0, 'done' => 0, 'changed' => [], 'missing' => [], 'locked' => [],
-            'failed' => [], 'remaining' => 0, 'feedback' => 0, 'lastError' => '',
+            'failed' => [], 'remaining' => 0, 'feedback' => 0, 'feedbackPending' => false, 'lastError' => '',
         ];
 
         try {
@@ -80,8 +81,16 @@ class CorrectionsModel extends BaseDatabaseModel
         }
 
         try {
+            // Read in bulk what the translations hold now, so a run that resumes passes over the
+            // ones already handled at once and spends its time on the ones still to correct.
+            $current = $this->currentValues($file['items']);
+
             foreach ($file['items'] as $item) {
-                if ($result['applied'] > 0 && !$budget->allowsAnother()) {
+                if (!$this->needsSaving($item, $current, $result)) {
+                    continue;
+                }
+
+                if ($result['applied'] + \count($result['failed']) > 0 && !$budget->allowsAnother()) {
                     $result['remaining']++;
 
                     continue;
@@ -97,14 +106,121 @@ class CorrectionsModel extends BaseDatabaseModel
             }
 
             // Recorded once the translations are all handled, so a file run in several goes is learned from once.
+            // A run that used its time on saving leaves it to the next run, so a web request is not overrun.
             if ($result['remaining'] === 0) {
-                $result['feedback'] = $this->recordFeedback($file['feedback'], $file['origin']);
+                if ($result['applied'] === 0 || $budget->allowsAnother()) {
+                    $result['feedback'] = $this->recordFeedback($file['feedback'], $file['origin']);
+                } else {
+                    $result['feedbackPending'] = true;
+                }
             }
         } finally {
             $lock->release();
         }
 
         return $result;
+    }
+
+    /**
+     * The current values of the corrected fields, read per table in a few queries.
+     *
+     * @param   array  $items  The translations from the file.
+     *
+     * @return  array<string, array<int, array>>  Per content type, the rows keyed by id, with the
+     *                                            corrected fields, the language and the lock.
+     *
+     * @since   1.5.1
+     */
+    private function currentValues(array $items): array
+    {
+        $db     = $this->getDatabase();
+        $wanted = [];
+
+        foreach ($items as $item) {
+            $wanted[$item['type']]['ids'][]  = $item['id'];
+            $wanted[$item['type']]['fields'] = array_merge($wanted[$item['type']]['fields'] ?? [], array_keys($item['fields']));
+        }
+
+        $current = [];
+
+        foreach ($wanted as $type => $want) {
+            $table = (string) (ContentTypesHelper::getProperties($type)['table'] ?? '');
+
+            if ($table === '') {
+                continue;
+            }
+
+            // A field the table does not have counts as changed in needsSaving(), rather than failing the query.
+            $columns = array_keys($db->getTableColumns($table));
+            $select  = array_values(array_intersect($columns, array_unique(array_merge(['id', 'language', 'checked_out'], $want['fields']))));
+
+            foreach (array_chunk(array_unique($want['ids']), 500) as $ids) {
+                $query = $db->getQuery(true)
+                    ->select($db->quoteName($select))
+                    ->from($db->quoteName($table))
+                    ->whereIn($db->quoteName('id'), $ids);
+                $db->setQuery($query);
+
+                foreach ($db->loadAssocList() as $row) {
+                    $current[$type][(int) $row['id']] = $row;
+                }
+            }
+        }
+
+        return $current;
+    }
+
+    /**
+     * Whether a translation still has corrections to save; counts it when it has not.
+     *
+     * @param   array  $item     The translation's entry from the file.
+     * @param   array  $current  The current values, from currentValues().
+     * @param   array  $result   The run's counts, updated.
+     *
+     * @return  boolean
+     *
+     * @since   1.5.1
+     */
+    private function needsSaving(array $item, array $current, array &$result): bool
+    {
+        $label = \sprintf('%s %d (%s)', $item['type'], $item['id'], $item['language']);
+        $row   = $current[$item['type']][$item['id']] ?? null;
+
+        if ($row === null || (string) ($row['language'] ?? '') !== $item['language']) {
+            $result['missing'][] = $label;
+
+            return false;
+        }
+
+        $statuses = [];
+
+        foreach ($item['fields'] as $name => $correction) {
+            $statuses[] = \array_key_exists($name, $row)
+                ? CorrectionsFile::status((string) $row[$name], $correction)
+                : CorrectionsFile::CHANGED;
+        }
+
+        if (\in_array(CorrectionsFile::CHANGED, $statuses, true)) {
+            $result['changed'][] = $label;
+
+            return false;
+        }
+
+        if (!\in_array(CorrectionsFile::APPLY, $statuses, true)) {
+            $result['done']++;
+
+            return false;
+        }
+
+        $checkedOut = (int) ($row['checked_out'] ?? 0);
+
+        if ($checkedOut !== 0 && $checkedOut !== (int) $this->getCurrentUser()->id) {
+            $result['locked'][] = $label;
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -210,30 +326,41 @@ class CorrectionsModel extends BaseDatabaseModel
         $recorded   = 0;
         $translator = (int) $this->getCurrentUser()->id;
         $known      = $this->recordedKeys($origin);
+        $queueIds   = $this->queueIds();
+        $rows       = [];
 
         foreach ($feedback as $entry) {
             $key     = self::feedbackKey($entry['language'], $entry['source_text'], $entry['machine_draft'], $entry['human_correction']);
-            $queueId = isset($known[$key]) ? null : $this->queueId($entry['type'], $entry['source_id']);
+            $queueId = isset($known[$key]) ? null : ($queueIds[$entry['type'] . ':' . $entry['source_id']] ?? null);
 
             if ($queueId === null) {
                 continue;
             }
 
             $known[$key] = true;
+            $rows[]      = implode(',', [
+                $queueId,
+                $db->quote($entry['source_text']),
+                $db->quote($entry['machine_draft']),
+                $db->quote($entry['human_correction']),
+                $db->quote($entry['language']),
+                $db->quote($origin),
+                $translator,
+                $entry['occurrences'],
+            ]);
+        }
 
-            $row = (object) [
-                'queue_id'         => $queueId,
-                'source_text'      => $entry['source_text'],
-                'machine_draft'    => $entry['machine_draft'],
-                'human_correction' => $entry['human_correction'],
-                'target_language'  => $entry['language'],
-                'source_origin'    => $origin,
-                'translator_id'    => $translator,
-                'occurrences'      => $entry['occurrences'],
-            ];
-
-            $db->insertObject('#__translations_feedback', $row);
-            $recorded++;
+        // In batches: a file holds thousands of corrections, and a web request has seconds to record them.
+        foreach (array_chunk($rows, 100) as $batch) {
+            $query = $db->getQuery(true)
+                ->insert($db->quoteName('#__translations_feedback'))
+                ->columns($db->quoteName([
+                    'queue_id', 'source_text', 'machine_draft', 'human_correction',
+                    'target_language', 'source_origin', 'translator_id', 'occurrences',
+                ]))
+                ->values($batch);
+            $db->setQuery($query)->execute();
+            $recorded += \count($batch);
         }
 
         return $recorded;
@@ -288,30 +415,27 @@ class CorrectionsModel extends BaseDatabaseModel
     }
 
     /**
-     * The queue row of a source item.
+     * The queue rows of the source items.
      *
-     * @param   string   $contentType  The content type key.
-     * @param   integer  $sourceId     The source item id.
+     * @return  array<string, int>  The queue row id, keyed by content type and source id ("com_content.article:157").
      *
-     * @return  integer|null  The queue row id, or null when the item is not in the queue.
-     *
-     * @since   1.5.0
+     * @since   1.5.1
      */
-    private function queueId(string $contentType, int $sourceId): ?int
+    private function queueIds(): array
     {
         $db    = $this->getDatabase();
         $query = $db->getQuery(true)
-            ->select($db->quoteName('id'))
-            ->from($db->quoteName('#__translations_queue'))
-            ->where($db->quoteName('content_type') . ' = :contentType')
-            ->where($db->quoteName('content_id') . ' = :contentId')
-            ->bind(':contentType', $contentType, ParameterType::STRING)
-            ->bind(':contentId', $sourceId, ParameterType::INTEGER);
+            ->select($db->quoteName(['id', 'content_type', 'content_id']))
+            ->from($db->quoteName('#__translations_queue'));
         $db->setQuery($query);
 
-        $id = $db->loadResult();
+        $ids = [];
 
-        return $id === null ? null : (int) $id;
+        foreach ($db->loadRowList() as [$id, $contentType, $contentId]) {
+            $ids[$contentType . ':' . (int) $contentId] = (int) $id;
+        }
+
+        return $ids;
     }
 
     /**

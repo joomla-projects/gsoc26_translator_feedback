@@ -569,8 +569,11 @@ everywhere, is too much work to make one translation at a time in the Translator
 
 1. Put the file inside the site, for example in `tmp/translations-corrections.json`.
 2. Create a task of the type **Import Translation Corrections**, with that path as
-   **Corrections File**, and start it with **Run Test**, or from the command line for a large
-   file. A run that runs out of time is resumed by the next one.
+   **Corrections File**, and start it with **Run Test**. A run that runs out of time asks to be
+   resumed: with Web Cron (see "With Web Cron" above) the next calls carry on by themselves,
+   with **Time per Run** at 50; without it, click **Run Test** again until the log says the
+   corrections are recorded as translator feedback. From the command line a run lasts four
+   minutes, which suits a large file best.
 3. Read the task log. It names every translation it left alone, and why. Remove the file when
    the import is done.
 
@@ -583,9 +586,12 @@ that no longer holds that text was edited since the file was made, and the whole
 then left alone. A field that holds its correction already is passed over, so running a file
 again changes nothing. A translation checked out by someone else is left alone too.
 
-Once every translation is handled, the file's feedback is recorded: each distinct correction
-once, with the number of places it was made, under the origin the file names (`repair` by
-default). The distiller turns it into rules as it does with feedback from translators.
+A run that resumes recognises the translations already corrected from a few queries, so its
+time goes to the ones still to correct, also late in a large file.
+
+Once every translation is handled, the file's feedback is recorded, in the next run when the
+last corrections took up the run's time: each distinct correction once, with the number of
+places it was made, under the origin the file names (`repair` by default). The distiller turns it into rules as it does with feedback from translators.
 
 The file is JSON:
 

@@ -230,10 +230,11 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
             return $this->knockout($e->getMessage());
         }
 
+        // Web Cron can start a run while the previous one is still saving; this task then carries on after it.
         if ($result['busy']) {
             $this->logTask($language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_BUSY'));
 
-            return Status::OK;
+            return Status::WILL_RESUME;
         }
 
         $this->logTask(
@@ -269,6 +270,12 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
         }
 
         if ($result['remaining'] > 0) {
+            return Status::WILL_RESUME;
+        }
+
+        if ($result['feedbackPending']) {
+            $this->logTask($language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_FEEDBACK_NEXT'));
+
             return Status::WILL_RESUME;
         }
 
