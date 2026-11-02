@@ -5,7 +5,7 @@
 	<author>Joomla! Project</author>
 	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-	<version>1.3.0</version>
+	<version>1.3.1</version>
 	<description>PLG_TASK_TRANSLATIONSDISTILLER_XML_DESCRIPTION</description>
 	<namespace path="src">Joomla\Plugin\Task\TranslationsDistiller</namespace>
 	<files>
