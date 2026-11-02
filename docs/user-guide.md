@@ -540,7 +540,7 @@ amounts of work but too slow for a whole language pack.
 
 ### Maintenance tasks
 
-Five more task types fix things after the fact. Create them as tasks without a schedule and
+Six more task types fix things after the fact. Create them as tasks without a schedule and
 start them with **Run Test** in the list of Scheduled Tasks:
 
 - **Retry Failed Translations** gives the translations set aside as `failed` a new set of
@@ -558,6 +558,55 @@ start them with **Run Test** in the list of Scheduled Tasks:
   one of them was. The others go to the trash, so they can still be restored. New rules are
   checked against the existing ones when they are distilled, so this is mostly needed for rules
   distilled before version 1.2.0.
+- **Import Translation Corrections** applies a file of corrections, see below.
+
+### Importing a set of corrections
+
+A correction that has to be made in many translations, such as a menu item and its article
+that should carry the same title, or a field label that has to follow the language pack
+everywhere, is too much work to make one translation at a time in the Translator feedback view.
+**Import Translation Corrections** applies such a set from a file:
+
+1. Put the file inside the site, for example in `tmp/translations-corrections.json`.
+2. Create a task of the type **Import Translation Corrections**, with that path as
+   **Corrections File**, and start it with **Run Test**, or from the command line for a large
+   file. A run that runs out of time is resumed by the next one.
+3. Read the task log. It names every translation it left alone, and why. Remove the file when
+   the import is done.
+
+Each translation is saved through its own component, as the **Save** button of the Translator
+feedback view does, so it gets a new version that can be restored. Its review state stays as
+it is: the import corrects some fields, it does not review the whole translation.
+
+Every field in the file carries a print (SHA-256) of the text it was corrected from. A field
+that no longer holds that text was edited since the file was made, and the whole translation is
+then left alone. A field that holds its correction already is passed over, so running a file
+again changes nothing. A translation checked out by someone else is left alone too.
+
+Once every translation is handled, the file's feedback is recorded: each distinct correction
+once, with the number of places it was made, under the origin the file names (`repair` by
+default). The distiller turns it into rules as it does with feedback from translators.
+
+The file is JSON:
+
+```json
+{
+  "format": "translations-corrections/1",
+  "source_origin": "repair",
+  "items": [
+    {"type": "com_content.article", "source_id": 157, "language": "de-DE", "id": 2221,
+     "fields": {"title": {"before": "<SHA-256 of the current title>", "after": "Datenschutz-Workflow"}}}
+  ],
+  "feedback": [
+    {"type": "com_content.article", "source_id": 157, "language": "de-DE",
+     "source_text": "Privacy Workflow", "machine_draft": "Privacy Workflow",
+     "human_correction": "Datenschutz-Workflow", "occurrences": 1}
+  ]
+}
+```
+
+`type` is the content type key of the queue, `source_id` the id of the source item and `id`
+the id of the translation. The fields are the columns of the item's table.
 
 ## Starting from your language pack
 
