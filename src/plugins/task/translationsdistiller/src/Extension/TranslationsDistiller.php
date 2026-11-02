@@ -22,6 +22,7 @@ use Joomla\Component\Scheduler\Administrator\Task\Status;
 use Joomla\Component\Scheduler\Administrator\Traits\TaskPluginTrait;
 use Joomla\Component\Translations\Administrator\Helper\RunResult;
 use Joomla\Component\Translations\Administrator\Helper\TimeBudget;
+use Joomla\Component\Translations\Administrator\Model\CorrectionsModel;
 use Joomla\Component\Translations\Administrator\Model\DistillerModel;
 use Joomla\Event\SubscriberInterface;
 
@@ -58,6 +59,11 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
             'langConstPrefix' => 'PLG_TASK_TRANSLATIONSDISTILLER_MERGERULES',
             'form'            => 'mergerules',
             'method'          => 'mergeRules',
+        ],
+        'translationsdistiller.importcorrections' => [
+            'langConstPrefix' => 'PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS',
+            'form'            => 'importcorrections',
+            'method'          => 'importCorrections',
         ],
     ];
 
@@ -201,6 +207,92 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
     }
 
     /**
+     * Apply a file of corrections to translations and record them as translator feedback.
+     *
+     * @param   ExecuteTaskEvent  $event  The onExecuteTask event.
+     *
+     * @return  integer  The task exit status.
+     *
+     * @since   1.3.0
+     */
+    protected function importCorrections(ExecuteTaskEvent $event): int
+    {
+        $params   = $event->getArgument('params');
+        $file     = trim((string) ($params->file ?? ''));
+        $budget   = new TimeBudget((int) ($params->time_budget ?? 0));
+        $language = $this->getApplication()->getLanguage();
+
+        try {
+            /** @var CorrectionsModel $model */
+            $model  = $this->component()->getMVCFactory()->createModel('Corrections', 'Administrator', ['ignore_request' => true]);
+            $result = $model->import($file, $budget, $this->getApplication());
+        } catch (\Throwable $e) {
+            return $this->knockout($e->getMessage());
+        }
+
+        if ($result['busy']) {
+            $this->logTask($language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_BUSY'));
+
+            return Status::OK;
+        }
+
+        $this->logTask(
+            \sprintf(
+                $language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_APPLIED'),
+                $result['applied'],
+                $result['done'],
+                $result['remaining']
+            )
+        );
+
+        $skipped = [
+            'PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_CHANGED' => $result['changed'],
+            'PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_MISSING' => $result['missing'],
+            'PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_LOCKED'  => $result['locked'],
+        ];
+
+        foreach ($skipped as $key => $labels) {
+            if ($labels !== []) {
+                $this->logTask(\sprintf($language->_($key), \count($labels), implode(', ', $labels)), 'warning');
+            }
+        }
+
+        if ($result['failed'] !== []) {
+            $this->logTask(
+                \sprintf(
+                    $language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_FAILED'),
+                    \count($result['failed']),
+                    $result['lastError']
+                ),
+                'warning'
+            );
+        }
+
+        if ($result['remaining'] > 0) {
+            return Status::WILL_RESUME;
+        }
+
+        $this->logTask(\sprintf($language->_('PLG_TASK_TRANSLATIONSDISTILLER_IMPORTCORRECTIONS_LOG_FEEDBACK'), $result['feedback']));
+
+        return Status::OK;
+    }
+
+    /**
+     * Boot the Translations component.
+     *
+     * @return  ComponentInterface&MVCFactoryServiceInterface
+     *
+     * @since   1.3.0
+     */
+    private function component(): ComponentInterface
+    {
+        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
+        $component = $this->getApplication()->bootComponent('com_translations');
+
+        return $component;
+    }
+
+    /**
      * Boot the Translations component and create its distiller model.
      *
      * @return  DistillerModel
@@ -209,11 +301,8 @@ final class TranslationsDistiller extends CMSPlugin implements SubscriberInterfa
      */
     private function distillerModel(): DistillerModel
     {
-        /** @var ComponentInterface&MVCFactoryServiceInterface $component */
-        $component = $this->getApplication()->bootComponent('com_translations');
-
         /** @var DistillerModel $model */
-        $model = $component->getMVCFactory()->createModel('Distiller', 'Administrator', ['ignore_request' => true]);
+        $model = $this->component()->getMVCFactory()->createModel('Distiller', 'Administrator', ['ignore_request' => true]);
 
         return $model;
     }
