@@ -26,6 +26,33 @@ use Joomla\Database\ParameterType;
 class RulesModel extends ListModel
 {
     /**
+     * The check filter value for terminology rules that translate a term another rule translates otherwise.
+     *
+     * @var    string
+     * @since  3.0.0
+     */
+    public const CHECK_CONFLICTING = 'conflicting';
+
+    /**
+     * The check filter value for terminology rules written for one context only.
+     *
+     * @var    string
+     * @since  3.0.0
+     */
+    public const CHECK_NARROW = 'narrow';
+
+    /**
+     * What the text of a rule written for one context says, as LIKE patterns.
+     *
+     * A terminology rule reaches a prompt when its term is in the text, whatever the text is
+     * about, so "Item as Datei, in the file manager" is applied to every item.
+     *
+     * @var    string[]
+     * @since  3.0.0
+     */
+    private const NARROW_PATTERNS = ['%context%', '%when referring to%', '%only in %', '%only when %', '%only for %'];
+
+    /**
      * Constructor.
      *
      * @param   array                $config   An optional associative array of configuration settings.
@@ -47,6 +74,7 @@ class RulesModel extends ListModel
                 'state', 'a.state', 'published',
                 'ordering', 'a.ordering',
                 'created', 'a.created',
+                'check',
             ];
         }
 
@@ -84,6 +112,7 @@ class RulesModel extends ListModel
         $id .= ':' . $this->getState('filter.rule_type');
         $id .= ':' . $this->getState('filter.target_language');
         $id .= ':' . $this->getState('filter.source_origin');
+        $id .= ':' . $this->getState('filter.check');
         $id .= ':' . serialize($this->getState('filter.rule_ids'));
 
         return parent::getStoreId($id);
@@ -179,6 +208,41 @@ class RulesModel extends ListModel
                     ->bind(':targetTerm', $search)
                     ->bind(':ruleText', $search);
             }
+        }
+
+        // Rules a translator should look at before they reach a prompt.
+        $check = (string) $this->getState('filter.check');
+        $term  = static fn (string $alias): string => 'COALESCE(NULLIF(' . $db->quoteName($alias . '.source_term_standard') . ", ''), LOWER("
+            . $db->quoteName($alias . '.source_term') . '))';
+
+        if ($check === self::CHECK_CONFLICTING || $check === self::CHECK_NARROW) {
+            $query->where($db->quoteName('a.rule_type') . ' = ' . $db->quote('terminology'));
+        }
+
+        // Another rule for the same term in the same language gives it another translation; the
+        // rules of a term are listed together, so they can be read side by side.
+        if ($check === self::CHECK_CONFLICTING) {
+            $other = $db->getQuery(true)
+                ->select('1')
+                ->from($db->quoteName('#__translations_rules', 'b'))
+                ->where($db->quoteName('b.id') . ' <> ' . $db->quoteName('a.id'))
+                ->where($db->quoteName('b.rule_type') . ' = ' . $db->quote('terminology'))
+                ->where($db->quoteName('b.target_language') . ' = ' . $db->quoteName('a.target_language'))
+                ->whereIn($db->quoteName('b.state'), [0, 1])
+                ->where($term('b') . ' = ' . $term('a'))
+                ->where($db->quoteName('b.target_term') . ' <> ' . $db->quoteName('a.target_term'));
+
+            $query->where($term('a') . " <> ''")
+                ->where('EXISTS (' . $other . ')')
+                ->order($term('a') . ' ASC');
+        }
+
+        if ($check === self::CHECK_NARROW) {
+            $query->extendWhere(
+                'AND',
+                array_map(static fn (string $pattern): string => $db->quoteName('a.rule_text') . ' LIKE ' . $db->quote($pattern), self::NARROW_PATTERNS),
+                'OR'
+            );
         }
 
         // Add the list ordering clause.

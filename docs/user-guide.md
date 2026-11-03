@@ -364,6 +364,17 @@ it:
 
 The origin is set when a rule is created and cannot be changed afterwards.
 
+The **To Check** filter lists the terminology rules worth a second look before they reach a
+prompt:
+
+- **Same term, other translation**: rules that translate the same term differently in one
+  language, listed together. Some are right in their own context - "archived" as a status
+  against "Archive" as an action - and some are a choice the community never made. Unpublish
+  or trash the one you do not want, or narrow its term.
+- **Written for one context**: rules whose text limits them to a context, such as "in the file
+  manager". A rule reaches a translation when its term is in the text, whatever the text is
+  about, so such a rule is applied everywhere its term appears.
+
 ### How the rules reach a translation
 
 Only the rules that matter to an item are sent when it is translated, not the whole rule
