@@ -229,9 +229,11 @@ the source item's alias with the language appended, rather than to the timestamp
 use.
 
 A translated menu item is placed in its own language's menu, under the translation of its
-parent, and opens the translation of the page it points at. Where the parent or the page has no
-translation yet, the menu item waits at the root of the menu or points at the original, and it
-is moved under its parent, or pointed at the translated page, as soon as that is translated.
+parent, and opens the translation of the page it points at. A translated alias menu item stands for
+the translation of its menu item, and a login form redirects to translated menu items. Where the
+parent, the page or the menu item has no translation yet, the menu item waits at the root of the
+menu or points at the original, and it is moved under its parent, or pointed at the translation,
+as soon as that is translated.
 Among its siblings it takes the place its original has, whatever order the items are translated
 in, so a translated menu keeps the order of the original menu. A menu item translated before is
 not moved again, so an order changed by hand stays.

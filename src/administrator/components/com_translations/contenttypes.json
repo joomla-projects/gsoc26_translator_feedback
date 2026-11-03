@@ -89,6 +89,16 @@
                 "com_tags.tag": { "id": "com_tags.tag" },
                 "com_tags.tags": { "parent_id": "com_tags.tag" }
             },
+            "paramTargets": {
+                "aliasoptions": "com_menus.item",
+                "featured_categories": "com_categories.category",
+                "redirect_menuitem": "com_menus.item",
+                "cancel_redirect_menuitem": "com_menus.item",
+                "login_redirect_menuitem": "com_menus.item",
+                "logout_redirect_menuitem": "com_menus.item",
+                "customRegLinkMenu": "com_menus.item",
+                "logout": "com_menus.item"
+            },
             "associatedFields": { "parent_id": "com_menus.item" },
             "associatedFieldsFallback": { "parent_id": 1 },
             "draftForceFields": { "home": 0, "menuordering": 0 },

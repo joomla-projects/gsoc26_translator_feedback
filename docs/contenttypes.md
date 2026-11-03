@@ -222,8 +222,16 @@ pointed at its translation.
 
 Only views whose ids name a content type in this map can be re-pointed. A contact or news feed
 category is a `#__categories` row belonging to another extension, which `limitToExtension` excludes,
-so those menu items are left untouched. A field that lives in a menu item's `params` rather than its
-`link`, such as the featured articles view's `featured_categories`, is outside what this key reaches.
+so those menu items are left untouched. An id that lives in a menu item's `params` rather than its
+`link` is re-pointed through `paramTargets`.
+
+**`paramTargets`** (object, optional) - the related items named in the item's `params`, re-pointed
+at their translations, mapping each param name to the content type its id belongs to. A menu item
+names more than its page: an alias names the menu item it stands for (`aliasoptions`), a login
+form the menu items it redirects to, the featured articles view the categories it shows
+(`featured_categories`, a list). It works as `linkTargets` does: a param the item does not have is
+skipped, an id without a translation yet keeps pointing at the source until that item is
+translated, and an id keeps the type it was stored with.
 
 **`context_tags`** (string, optional) - the type alias the item's tags are stored under in the
 content item tag map, used when reading the source's tags for `m2m_relation`. It defaults to the
@@ -255,7 +263,8 @@ category's tags are stored under `com_content.category`, so the category entry s
 
 A menu item translates only its `title`. It is placed in the derived per-language menu under the
 translation of its parent, at the root while that has none, with `home` forced off, and `linkTargets` re-points its `link` at the translation of whatever it
-points at, so a translated menu item opens the translated page.
+points at, so a translated menu item opens the translated page. `paramTargets` does the same for
+what it names in its params, so a translated alias stands for the translated menu item.
 
 ```json
 "com_menus.item": {
@@ -275,6 +284,16 @@ points at, so a translated menu item opens the translated page.
         "com_content.archive": { "catid": "com_categories.category" },
         "com_tags.tag": { "id": "com_tags.tag" },
         "com_tags.tags": { "parent_id": "com_tags.tag" }
+    },
+    "paramTargets": {
+        "aliasoptions": "com_menus.item",
+        "featured_categories": "com_categories.category",
+        "redirect_menuitem": "com_menus.item",
+        "cancel_redirect_menuitem": "com_menus.item",
+        "login_redirect_menuitem": "com_menus.item",
+        "logout_redirect_menuitem": "com_menus.item",
+        "customRegLinkMenu": "com_menus.item",
+        "logout": "com_menus.item"
     },
     "associatedFields": { "parent_id": "com_menus.item" },
     "associatedFieldsFallback": { "parent_id": 1 },

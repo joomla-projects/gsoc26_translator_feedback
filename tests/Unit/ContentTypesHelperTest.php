@@ -251,6 +251,8 @@ final class ContentTypesHelperTest extends TestCase
             $related = array_merge($related, array_values((array) $parameters));
         }
 
+        $related = array_merge($related, array_values((array) ($properties['paramTargets'] ?? [])));
+
         return array_values(array_unique($related));
     }
 

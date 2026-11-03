@@ -121,8 +121,8 @@ class ContentTypesHelper
     /**
      * List the content types whose items a content type's own items point at.
      *
-     * An item points at another through a foreign key, a many to many relation, or the query of a
-     * link, and all three are repointed at the related item's translation when a draft is made.
+     * An item points at another through a foreign key, a many to many relation, the query of a link
+     * or a param, and all of them are repointed at the related item's translation when a draft is made.
      *
      * @param   string  $contentType  The content type key.
      *
@@ -142,6 +142,8 @@ class ContentTypesHelper
         foreach ((array) ($properties['linkTargets'] ?? []) as $parameters) {
             $related = array_merge($related, array_values((array) $parameters));
         }
+
+        $related = array_merge($related, array_values((array) ($properties['paramTargets'] ?? [])));
 
         return array_values(array_unique($related));
     }

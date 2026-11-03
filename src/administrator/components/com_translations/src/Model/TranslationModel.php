@@ -1488,6 +1488,13 @@ class TranslationModel extends BaseDatabaseModel
             $draft['link'] = $this->repointLinkTargets((string) ($sourceItem['link'] ?? ''), $linkTargets, $targetLanguage);
         }
 
+        // The same for the items named in its params, such as the menu item an alias stands for.
+        $paramTargets = (array) ($properties['paramTargets'] ?? []);
+
+        if ($paramTargets !== []) {
+            $draft['params'] = $this->repointParamTargets((string) ($sourceItem['params'] ?? ''), $paramTargets, $targetLanguage);
+        }
+
         // A new draft is held back for a translator to approve, unless the option publishes it on creation,
         // and even then it waits while its source is off the site (see SourceState). An existing
         // translation keeps the state it has, so re-translating never takes a live item off the site.
@@ -1591,6 +1598,7 @@ class TranslationModel extends BaseDatabaseModel
         // item linking to this article, a text linking to its page, or a menu item whose parent this
         // is. Now they can point here.
         $this->repointEarlierLinks($contentType, (int) $sourceItem['id'], $targetLanguage);
+        $this->repointEarlierParams($contentType, (int) $sourceItem['id'], $targetLanguage);
         (new TranslatedTexts($this->getDatabase()))->repointLinksTo($contentType, (int) $sourceItem['id'], $targetLanguage);
         $this->nestEarlierChildren($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
 
@@ -1893,6 +1901,128 @@ class TranslationModel extends BaseDatabaseModel
         // Rebuild it as com_menus does: the separator is named rather than taken from
         // arg_separator.output, which a site can set to an entity, and the ids keep their brackets.
         return 'index.php?' . urldecode(http_build_query($arguments, '', '&'));
+    }
+
+    /**
+     * Repoint the items named in an item's params at their translations.
+     *
+     * A menu item names more than its page: an alias names the menu item it stands for, a login
+     * form the menu items it redirects to, the featured articles view the categories it shows. A
+     * param can carry one id or a list of them. An id whose item has no translation yet keeps
+     * pointing at the source, as a foreign key does.
+     *
+     * @param   string                 $params          The source item's params, as JSON.
+     * @param   array<string, string>  $paramTargets    The related content type per param name.
+     * @param   string                 $targetLanguage  The target language code.
+     *
+     * @return  string  The params, each id repointed where a translation exists; unchanged when none is.
+     *
+     * @since   2.0.0
+     */
+    private function repointParamTargets(string $params, array $paramTargets, string $targetLanguage): string
+    {
+        $values = json_decode($params, true);
+
+        if (!\is_array($values)) {
+            return $params;
+        }
+
+        $repointed = $values;
+
+        foreach (array_intersect_key($paramTargets, $values) as $name => $relatedType) {
+            $value  = $values[$name];
+            $isList = \is_array($value);
+            $ids    = [];
+
+            foreach ($isList ? $value : [$value] as $key => $id) {
+                $translatedId = is_numeric($id) && (int) $id > 0
+                    ? $this->translatedRelatedId((int) $id, (string) $relatedType, $targetLanguage)
+                    : null;
+
+                // Joomla stores most of these ids as strings, so a repointed one keeps the type it had.
+                $ids[$key] = $translatedId === null ? $id : (\is_string($id) ? (string) $translatedId : $translatedId);
+            }
+
+            $repointed[$name] = $isList ? $ids : $ids[0];
+        }
+
+        return $repointed === $values ? $params : (new Registry($repointed))->toString();
+    }
+
+    /**
+     * Repoint the params of earlier translations at an item that has just been translated.
+     *
+     * An alias menu item translated before the menu item it stands for keeps standing for the
+     * source, as repointParamTargets() leaves an id without a translation. Once that has a
+     * translation, the target language's translations still naming the source in their params are
+     * pointed at it. A menu item keeps no versions, so its params are written directly.
+     *
+     * @param   string   $contentType     The content type just translated, e.g. 'com_menus.item'.
+     * @param   integer  $sourceItemId    The id of the source item just translated.
+     * @param   string   $targetLanguage  The language it was translated into.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function repointEarlierParams(string $contentType, int $sourceItemId, string $targetLanguage): void
+    {
+        foreach (ContentTypesHelper::getContentTypes() as $namingType) {
+            $naming       = ContentTypesHelper::getProperties($namingType);
+            $paramTargets = (array) ($naming['paramTargets'] ?? []);
+            $names        = array_keys($paramTargets, $contentType, true);
+
+            if ($names === []) {
+                continue;
+            }
+
+            // Only translations are repointed: an item in an association group of the target language.
+            $db      = $this->getDatabase();
+            $table   = (string) ($naming['table'] ?? '');
+            $context = (string) ($naming['context_associations'] ?? '');
+            $query   = $db->getQuery(true)
+                ->select($db->quoteName(['item.id', 'item.params']))
+                ->from($db->quoteName($table, 'item'))
+                ->join(
+                    'INNER',
+                    $db->quoteName('#__associations', 'association'),
+                    $db->quoteName('association.id') . ' = ' . $db->quoteName('item.id')
+                    . ' AND ' . $db->quoteName('association.context') . ' = :context'
+                )
+                ->where($db->quoteName('item.language') . ' = :language')
+                ->bind(':context', $context, ParameterType::STRING)
+                ->bind(':language', $targetLanguage, ParameterType::STRING);
+            $db->setQuery($query);
+
+            foreach ($db->loadObjectList() as $item) {
+                $values  = json_decode((string) $item->params, true);
+                $namesIt = false;
+
+                foreach ($names as $name) {
+                    $ids     = \is_array($values) ? array_map('intval', (array) ($values[$name] ?? [])) : [];
+                    $namesIt = $namesIt || \in_array($sourceItemId, $ids, true);
+                }
+
+                if (!$namesIt) {
+                    continue;
+                }
+
+                $params = $this->repointParamTargets((string) $item->params, $paramTargets, $targetLanguage);
+
+                if ($params === (string) $item->params) {
+                    continue;
+                }
+
+                $itemId = (int) $item->id;
+                $update = $db->getQuery(true)
+                    ->update($db->quoteName($table))
+                    ->set($db->quoteName('params') . ' = :params')
+                    ->where($db->quoteName('id') . ' = :id')
+                    ->bind(':params', $params, ParameterType::STRING)
+                    ->bind(':id', $itemId, ParameterType::INTEGER);
+                $db->setQuery($update)->execute();
+            }
+        }
     }
 
     /**
