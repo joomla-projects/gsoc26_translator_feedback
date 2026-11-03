@@ -144,6 +144,11 @@ What this means for a plugin:
   article is what `getTerminology()` and `reportGlossary()` are for, and
   `getDocumentContext()` says what the article is about for a part that does not contain
   its title.
+- **Code arrives as a placeholder.** The text inside `<code>`, `<kbd>`, `<samp>` and `<pre>`
+  is never translated, so the plugin does not get it: such an element arrives holding a
+  placeholder like `{{keep:3}}`. Keep every placeholder once, inside its element; the element may
+  move within the sentence. An answer that loses or doubles a placeholder counts as not
+  translated, and the component puts the held-back text back in all the others.
 
 Every answered request is stored before the next is sent, so a run that ends before the
 item does loses nothing: the translate task reports that it should resume, and the next run

@@ -150,6 +150,75 @@ final class StringTranslatorTest extends TestCase
     }
 
     /**
+     * The text in code elements is not sent, and comes back as it was.
+     *
+     * @return  void
+     *
+     * @since   1.6.0
+     */
+    public function testCodeIsNotSentAndComesBackAsItWas(): void
+    {
+        $strings = [
+            'title'       => 'Mail Templates Tags',
+            'introtext#1' => '<tr><th scope="row"><code>NAME</code></th><td>X</td></tr>'
+                . '<p>Use <kbd>Ctrl</kbd> and the <code class="x">{MESSAGES}</code> tag, not <code> </code>.</p>',
+        ];
+
+        [$sent, $held] = StringTranslator::holdUntranslated($strings);
+
+        $this->assertSame('Mail Templates Tags', $sent['title']);
+        $this->assertStringNotContainsString('NAME', $sent['introtext#1']);
+        $this->assertStringNotContainsString('MESSAGES', $sent['introtext#1']);
+        $this->assertStringContainsString('<code class="x">{{keep:2}}</code>', $sent['introtext#1']);
+        $this->assertStringContainsString('<code> </code>', $sent['introtext#1'], 'an empty element is left alone');
+        $this->assertSame(['{{keep:0}}' => 'NAME', '{{keep:1}}' => 'Ctrl', '{{keep:2}}' => '{MESSAGES}'], $held);
+
+        // A provider may move the elements around in a sentence.
+        $answer = [
+            'title'       => 'Schlagwörter der E-Mail-Vorlagen',
+            'introtext#1' => '<tr><th scope="row"><code>{{keep:0}}</code></th><td>X</td></tr>'
+                . '<p>Verwenden Sie das Tag <code class="x">{{keep:2}}</code> mit <kbd>{{keep:1}}</kbd>,'
+                . ' nicht <code> </code>.</p>',
+        ];
+
+        $this->assertSame([
+            'title'       => 'Schlagwörter der E-Mail-Vorlagen',
+            'introtext#1' => '<tr><th scope="row"><code>NAME</code></th><td>X</td></tr>'
+                . '<p>Verwenden Sie das Tag <code class="x">{MESSAGES}</code> mit <kbd>Ctrl</kbd>,'
+                . ' nicht <code> </code>.</p>',
+        ], StringTranslator::restoreUntranslated($sent, $answer, $held));
+    }
+
+    /**
+     * An answer that lost or doubled a placeholder is left out, to be asked for again.
+     *
+     * @return  void
+     *
+     * @since   1.6.0
+     */
+    public function testAnAnswerWithoutItsPlaceholdersIsLeftOut(): void
+    {
+        $strings = [
+            'introtext#1' => '<p>The <code>NAME</code> and <code>DATE</code> tags.</p>',
+            'introtext#2' => '<p>The <code>EMAIL</code> tag.</p>',
+            'introtext#3' => '<p>No code here.</p>',
+        ];
+
+        [$sent, $held] = StringTranslator::holdUntranslated($strings);
+
+        $answer = [
+            'introtext#1' => '<p>Les balises <code>NOM</code> et <code>{{keep:1}}</code>.</p>',
+            'introtext#2' => '<p>La balise <code>{{keep:2}}</code> et <code>{{keep:2}}</code>.</p>',
+            'introtext#3' => '<p>Pas de code ici.</p>',
+        ];
+
+        $this->assertSame(
+            ['introtext#3' => '<p>Pas de code ici.</p>'],
+            StringTranslator::restoreUntranslated($sent, $answer, $held)
+        );
+    }
+
+    /**
      * Run the provider's answer through the check.
      *
      * @param   array  $strings       The source strings.

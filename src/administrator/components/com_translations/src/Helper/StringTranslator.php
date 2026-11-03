@@ -51,6 +51,25 @@ class StringTranslator
     public const FACTOR = 4;
 
     /**
+     * The elements whose text is never translated: code, keyboard input, program output.
+     *
+     * In the user guide these hold what a reader types or reads on the screen exactly as it is - a
+     * mail template's {USERNAME} tag, a file name, a command - and a translated one is wrong.
+     *
+     * @var    string
+     * @since  1.6.0
+     */
+    private const UNTRANSLATED = '#(<(code|kbd|samp|pre)\b[^>]*>)(.*?)(</\2\s*>)#is';
+
+    /**
+     * What a placeholder for held-back text looks like.
+     *
+     * @var    string
+     * @since  1.6.0
+     */
+    private const PLACEHOLDER = '/\{\{keep:\d+\}\}/';
+
+    /**
      * Translate a collection of strings.
      *
      * @param   DispatcherInterface  $dispatcher      The dispatcher to raise the event on.
@@ -113,8 +132,10 @@ class StringTranslator
 
         PluginHelper::importPlugin('translation', null, true, $dispatcher);
 
+        [$sent, $held] = self::holdUntranslated($strings);
+
         $event = new TranslateEvent('onTranslate', [
-            'sourceStrings'   => $strings,
+            'sourceStrings'   => $sent,
             'sourceLanguage'  => $sourceLanguage,
             'targetLanguage'  => $targetLanguage,
             'rules'           => $rules,
@@ -126,7 +147,10 @@ class StringTranslator
         // Use the first provider that returned translations.
         foreach ((array) $event->getArgument('result', []) as $providerResult) {
             if (\is_array($providerResult) && $providerResult !== []) {
-                return ['strings' => self::ofTheirSources($strings, $providerResult), 'glossary' => $event->getGlossary()];
+                return [
+                    'strings'  => self::restoreUntranslated($sent, self::ofTheirSources($sent, $providerResult), $held),
+                    'glossary' => $event->getGlossary(),
+                ];
             }
         }
 
@@ -179,5 +203,91 @@ class StringTranslator
         }
 
         return $kept;
+    }
+
+    /**
+     * Take the text out of the elements that are not translated, leaving a numbered placeholder.
+     *
+     * Asking a provider to leave the text alone is not enough: a column of mail template tags -
+     * NAME, DATE, MESSAGE - reads like words, and a provider translates words. What it never sees
+     * it cannot translate. The element itself stays, so the provider still knows something is
+     * there and keeps it in its place in the sentence.
+     *
+     * @param   array  $strings  The source strings, keyed by the caller.
+     *
+     * @return  array{0: array, 1: array<string, string>}  The strings to send, and the text held back by placeholder.
+     *
+     * @since   1.6.0
+     */
+    public static function holdUntranslated(array $strings): array
+    {
+        $held = [];
+
+        foreach ($strings as $key => $string) {
+            if (!\is_string($string) || stripos($string, '<') === false) {
+                continue;
+            }
+
+            $strings[$key] = preg_replace_callback(
+                self::UNTRANSLATED,
+                static function (array $m) use (&$held): string {
+                    if (trim($m[3]) === '') {
+                        return $m[0];
+                    }
+
+                    $placeholder        = '{{keep:' . \count($held) . '}}';
+                    $held[$placeholder] = $m[3];
+
+                    return $m[1] . $placeholder . $m[4];
+                },
+                $string
+            ) ?? $string;
+        }
+
+        return [$strings, $held];
+    }
+
+    /**
+     * Put the held-back text in place of its placeholders.
+     *
+     * An answer has to come back with exactly the placeholders its string was sent with, each
+     * once. One that lost a placeholder, doubled one or took another string's is left out: the
+     * callers treat a missing answer as one still to be asked for, which is better than a
+     * translation with a hole where the code was.
+     *
+     * @param   array                  $sent          The strings as they were sent, with their placeholders.
+     * @param   array                  $translations  What the provider answered, keyed the same.
+     * @param   array<string, string>  $held          The text held back, by placeholder.
+     *
+     * @return  array  The answers with their held-back text back in place.
+     *
+     * @since   1.6.0
+     */
+    public static function restoreUntranslated(array $sent, array $translations, array $held): array
+    {
+        if ($held === []) {
+            return $translations;
+        }
+
+        $placeholders = static function (string $text): array {
+            preg_match_all(self::PLACEHOLDER, $text, $found);
+            sort($found[0]);
+
+            return $found[0];
+        };
+
+        $restored = [];
+
+        foreach ($translations as $key => $translation) {
+            $translation = (string) $translation;
+
+            if ($placeholders($translation) !== $placeholders((string) ($sent[$key] ?? ''))) {
+                continue;
+            }
+
+            $restored[$key] = strtr($translation, $held);
+        }
+
+        return $restored;
     }
 }
