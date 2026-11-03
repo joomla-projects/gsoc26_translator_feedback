@@ -232,6 +232,9 @@ A translated menu item is placed in its own language's menu, under the translati
 parent, and opens the translation of the page it points at. Where the parent or the page has no
 translation yet, the menu item waits at the root of the menu or points at the original, and it
 is moved under its parent, or pointed at the translated page, as soon as that is translated.
+Among its siblings it takes the place its original has, whatever order the items are translated
+in, so a translated menu keeps the order of the original menu. A menu item translated before is
+not moved again, so an order changed by hand stays.
 
 At the root of a menu Joomla keeps a few names for itself: `component`, and every folder in the site root. A menu item that
 translates to one of those - "Media", "Plugins", "Modules" - takes the language-appended

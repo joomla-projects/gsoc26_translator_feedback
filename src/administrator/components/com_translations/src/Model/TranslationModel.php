@@ -1577,6 +1577,12 @@ class TranslationModel extends BaseDatabaseModel
         $this->repointEarlierLinks($contentType, (int) $sourceItem['id'], $targetLanguage);
         $this->nestEarlierChildren($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
 
+        // A new translation takes its source's place among its siblings; one translated before keeps
+        // the place it has, which someone may have chosen by hand.
+        if ($newState !== null) {
+            $this->placeLikeSource($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
+        }
+
         // A category's custom fields are scoped to its own id, so a field assigned only to the source
         // category does not reach the new draft on save; copy those assignments and store their values.
         if (!empty($properties['copyCustomFieldAssignments']) && $customFields !== []) {
@@ -2033,8 +2039,191 @@ class TranslationModel extends BaseDatabaseModel
                 $node->{$field} = $draftId;
                 $node->setLocation($draftId, 'last-child');
                 $node->store();
+
+                $this->placeLikeSource($model, $childId, $translatedChildId, $targetLanguage, $contentType, $properties);
             }
         }
+    }
+
+    /**
+     * Put a translation in the place its source has among its siblings.
+     *
+     * Joomla adds a new item as the last child of its parent, so a menu translated item by item ends
+     * up in the order it was translated in rather than in the source's. A translation goes directly
+     * after the translation of the nearest earlier sibling of its source that has one, or first when
+     * none has. Placed that way the translated siblings keep the source's order whatever order they
+     * are translated in. A translation still waiting at the root for its parent's is placed once it
+     * is moved under that parent, and a sibling's translation someone moved elsewhere is passed over.
+     *
+     * Only a type whose items nest under items of their own type has siblings to keep in order.
+     *
+     * @param   AdminModel            $model           The managing component's model, for its table.
+     * @param   integer               $sourceItemId    The source item.
+     * @param   integer               $translationId   Its translation.
+     * @param   string                $targetLanguage  The translation's language.
+     * @param   string                $contentType     The content type key, e.g. 'com_menus.item'.
+     * @param   array<string, mixed>  $properties      The content type's properties from the map.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function placeLikeSource(
+        AdminModel $model,
+        int $sourceItemId,
+        int $translationId,
+        string $targetLanguage,
+        string $contentType,
+        array $properties
+    ): void {
+        $parentField = array_search($contentType, (array) ($properties['associatedFields'] ?? []), true);
+
+        if (!\is_string($parentField)) {
+            return;
+        }
+
+        $table     = (string) ($properties['table'] ?? '');
+        $container = isset($properties['languageMenu']) ? (string) $properties['languageMenu'] : null;
+        $columns   = array_filter(['id', $parentField, $container]);
+        $db        = $this->getDatabase();
+
+        $query = $db->getQuery(true)
+            ->select($db->quoteName($columns))
+            ->from($db->quoteName($table))
+            ->whereIn($db->quoteName('id'), [$sourceItemId, $translationId]);
+        $rows = $db->setQuery($query)->loadAssocList('id');
+
+        if (!isset($rows[$sourceItemId], $rows[$translationId])) {
+            return;
+        }
+
+        $source      = $rows[$sourceItemId];
+        $translation = $rows[$translationId];
+        $fallback    = $properties['associatedFieldsFallback'][$parentField] ?? null;
+        $sourceRoot  = $fallback !== null && (int) $source[$parentField] === (int) $fallback;
+
+        // Under its parent's translation, or at the root when the source is at the root too: anywhere
+        // else it is still waiting for its parent, and is placed when it is moved.
+        $parentTranslation = $sourceRoot
+            ? (int) $fallback
+            : $this->translatedRelatedId((int) $source[$parentField], $contentType, $targetLanguage);
+
+        if ($parentTranslation === null || (int) $translation[$parentField] !== $parentTranslation) {
+            return;
+        }
+
+        $sourceParent = (int) $source[$parentField];
+        $query        = $db->getQuery(true)
+            ->select($db->quoteName('id'))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName($parentField) . ' = :parent')
+            ->bind(':parent', $sourceParent, ParameterType::INTEGER)
+            ->order($db->quoteName('lft') . ' ASC');
+
+        if ($container !== null) {
+            $sourceContainer = (string) $source[$container];
+            $query->where($db->quoteName($container) . ' = :container')
+                ->bind(':container', $sourceContainer, ParameterType::STRING);
+        }
+
+        $siblings = array_map('intval', $db->setQuery($query)->loadColumn());
+        $position = array_search($sourceItemId, $siblings, true);
+
+        if ($position === false) {
+            return;
+        }
+
+        $after = null;
+
+        for ($i = $position - 1; $i >= 0 && $after === null; $i--) {
+            $candidate = $this->translatedRelatedId($siblings[$i], $contentType, $targetLanguage);
+
+            if ($candidate !== null && $this->isSiblingOf($candidate, $translation, $table, $parentField, $container)) {
+                $after = $candidate;
+            }
+        }
+
+        /** @var \Joomla\CMS\Table\Nested $node */
+        $node = $model->getTable();
+
+        if ($after !== null) {
+            $node->moveByReference($after, 'after', $translationId);
+
+            return;
+        }
+
+        // First among its siblings. At the root of a menu, the first item of that menu is the
+        // reference, because the root holds the items of every menu.
+        $first = $this->firstSibling($translation, $translationId, $table, $parentField, $container);
+
+        if ($first !== null) {
+            $node->moveByReference($first, 'before', $translationId);
+        }
+    }
+
+    /**
+     * Whether an item sits under the same parent, in the same container, as a translation.
+     *
+     * @param   integer      $itemId       The item.
+     * @param   array        $translation  The translation's parent and container.
+     * @param   string       $table        The content type's table.
+     * @param   string       $parentField  The column naming the parent.
+     * @param   string|null  $container    The column naming the container, if the type has one.
+     *
+     * @return  boolean
+     *
+     * @since   2.0.0
+     */
+    private function isSiblingOf(int $itemId, array $translation, string $table, string $parentField, ?string $container): bool
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(array_filter([$parentField, $container])))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName('id') . ' = :id')
+            ->bind(':id', $itemId, ParameterType::INTEGER);
+        $row = $db->setQuery($query)->loadAssoc();
+
+        return $row !== null
+            && (int) $row[$parentField] === (int) $translation[$parentField]
+            && ($container === null || (string) $row[$container] === (string) $translation[$container]);
+    }
+
+    /**
+     * The first of a translation's siblings, other than itself.
+     *
+     * @param   array        $translation    The translation's parent and container.
+     * @param   integer      $translationId  The translation.
+     * @param   string       $table          The content type's table.
+     * @param   string       $parentField    The column naming the parent.
+     * @param   string|null  $container      The column naming the container, if the type has one.
+     *
+     * @return  integer|null  Null when it has no siblings.
+     *
+     * @since   2.0.0
+     */
+    private function firstSibling(array $translation, int $translationId, string $table, string $parentField, ?string $container): ?int
+    {
+        $parent = (int) $translation[$parentField];
+        $db     = $this->getDatabase();
+        $query  = $db->getQuery(true)
+            ->select($db->quoteName('id'))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName($parentField) . ' = :parent')
+            ->where($db->quoteName('id') . ' <> :id')
+            ->bind(':parent', $parent, ParameterType::INTEGER)
+            ->bind(':id', $translationId, ParameterType::INTEGER)
+            ->order($db->quoteName('lft') . ' ASC');
+
+        if ($container !== null) {
+            $value = (string) $translation[$container];
+            $query->where($db->quoteName($container) . ' = :container')
+                ->bind(':container', $value, ParameterType::STRING);
+        }
+
+        $first = $db->setQuery($query, 0, 1)->loadResult();
+
+        return $first === null ? null : (int) $first;
     }
 
     /**
