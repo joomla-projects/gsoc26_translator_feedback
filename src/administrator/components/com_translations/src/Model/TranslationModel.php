@@ -31,6 +31,7 @@ use Joomla\Component\Translations\Administrator\Helper\LanguageShare;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Component\Translations\Administrator\Helper\RunLock;
 use Joomla\Component\Translations\Administrator\Helper\RunResult;
+use Joomla\Component\Translations\Administrator\Helper\SourceState;
 use Joomla\Component\Translations\Administrator\Helper\StringTranslator;
 use Joomla\Component\Translations\Administrator\Helper\TextChunker;
 use Joomla\Component\Translations\Administrator\Helper\TimeBudget;
@@ -1472,12 +1473,19 @@ class TranslationModel extends BaseDatabaseModel
             $draft['link'] = $this->repointLinkTargets((string) ($sourceItem['link'] ?? ''), $linkTargets, $targetLanguage);
         }
 
-        // A new draft is held back for a translator to approve, unless the option publishes it on creation.
-        // An existing translation keeps the state it has, so re-translating never takes a live item off the site.
-        if ($draft['id'] === 0) {
-            $publishOnCreation = (bool) ComponentHelper::getParams('com_translations')->get('auto_publish', 0);
+        // A new draft is held back for a translator to approve, unless the option publishes it on creation,
+        // and even then it waits while its source is off the site (see SourceState). An existing
+        // translation keeps the state it has, so re-translating never takes a live item off the site.
+        $newState = null;
 
-            $draft[(string) ($properties['stateField'] ?? '')] = $publishOnCreation ? 1 : 0;
+        if ($draft['id'] === 0) {
+            $stateField = (string) ($properties['stateField'] ?? '');
+            $newState   = SourceState::forNewTranslation(
+                (int) ($sourceItem[$stateField] ?? 0),
+                (bool) ComponentHelper::getParams('com_translations')->get('auto_publish', 0)
+            );
+
+            $draft[$stateField] = $newState['state'];
         }
 
         // Force any fields the draft must hold at a fixed value, e.g. a translated menu item is never the home item.
@@ -1553,6 +1561,10 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         $draftId = (int) $model->getState($model->getName() . '.id');
+
+        if ($newState !== null) {
+            $this->setHeldBySource((int) $sourceItem['id'], $contentType, $targetLanguage, $newState['held']);
+        }
 
         // A model without an associationsContext (tags) leaves the link unwritten, so write it here.
         if ($context !== '' && !$modelWritesAssociations) {
@@ -2192,6 +2204,32 @@ class TranslationModel extends BaseDatabaseModel
 
         $db->setQuery($query);
         $db->execute();
+    }
+
+    /**
+     * Record whether a new translation waits for its source to be published.
+     *
+     * @param   integer  $sourceItemId    The source item id.
+     * @param   string   $contentType     The content type key, e.g. 'com_content.article'.
+     * @param   string   $targetLanguage  The target language code.
+     * @param   boolean  $held            Whether the translation is held by its source.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function setHeldBySource(int $sourceItemId, string $contentType, string $targetLanguage, bool $held): void
+    {
+        $stateId = $this->getOrCreateStateId($sourceItemId, $contentType, $targetLanguage);
+        $value   = $held ? 1 : 0;
+        $db      = $this->getDatabase();
+        $query   = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue_states'))
+            ->set($db->quoteName('held_by_source') . ' = :held')
+            ->where($db->quoteName('id') . ' = :stateId')
+            ->bind(':held', $value, ParameterType::INTEGER)
+            ->bind(':stateId', $stateId, ParameterType::INTEGER);
+        $db->setQuery($query)->execute();
     }
 
     /**

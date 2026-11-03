@@ -32,6 +32,7 @@ use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Table\ContentHistory;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
+use Joomla\Component\Translations\Administrator\Helper\SourceState;
 use Joomla\Database\DatabaseAwareInterface;
 use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Database\ParameterType;
@@ -260,8 +261,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Persist the toggle to the item's queue row when a source-language item is saved, and
-     * invalidate a source menu item's translations when its title changed.
+     * Persist the toggle to the item's queue row when a source-language item is saved, invalidate
+     * a source menu item's translations when its title changed, and let the translations follow a
+     * state the source was given in its edit form.
      *
      * @param   AfterSaveEvent  $event  The event.
      *
@@ -279,11 +281,21 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         $properties = $this->managedProperties($contentType);
 
-        if ($properties === null || !isset($properties['optOutForm'])) {
+        if ($properties === null) {
             return;
         }
 
-        $item = $event->getItem();
+        $item       = $event->getItem();
+        $stateField = (string) ($properties['stateField'] ?? '');
+
+        // A new item has no translations yet, and only a source has a queue row to follow from.
+        if (!$event->getIsNew() && $stateField !== '' && isset($item->$stateField)) {
+            $this->followSourceState((int) $item->id, $contentType, $properties, (int) $item->$stateField);
+        }
+
+        if (!isset($properties['optOutForm'])) {
+            return;
+        }
 
         // Only source-language originals are tracked in the queue.
         if ((string) ($item->language ?? '') !== $this->getSourceLanguage()) {
@@ -378,7 +390,8 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Trash a source item's translations when the source is trashed.
+     * Trash a source item's translations when the source is trashed, and keep them off the site
+     * while it is unpublished or archived.
      *
      * Fires for articles, tags and menu items; categories use onCategoryChangeState.
      *
@@ -390,11 +403,6 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onContentChangeState(AfterChangeStateEvent $event): void
     {
-        // -2 is the trashed state; publish, unpublish and archive do not cascade.
-        if ($event->getValue() !== -2) {
-            return;
-        }
-
         $properties = $this->managedProperties($event->getContext());
 
         if ($properties === null) {
@@ -402,12 +410,13 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         }
 
         foreach ($event->getPks() as $pk) {
-            $this->cascadeTrash((int) $pk, $event->getContext(), $properties);
+            $this->cascadeState((int) $pk, $event->getContext(), $properties, (int) $event->getValue());
         }
     }
 
     /**
-     * Trash a category's translations when the source category is trashed.
+     * Trash a category's translations when the source category is trashed, and keep them off the
+     * site while it is unpublished or archived.
      *
      * Categories fire their own change-state event, carrying the extension as the context, so this
      * mirrors onContentChangeState for the category content type.
@@ -420,10 +429,6 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
      */
     public function onCategoryChangeState(AfterCategoryChangeStateEvent $event): void
     {
-        if ($event->getValue() !== -2) {
-            return;
-        }
-
         // This event fires only for categories; its context is the extension, not the content type.
         $contentType = 'com_categories.category';
         $properties  = $this->managedProperties($contentType);
@@ -433,8 +438,151 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         }
 
         foreach ($event->getPks() as $pk) {
-            $this->cascadeTrash((int) $pk, $contentType, $properties);
+            $this->cascadeState((int) $pk, $contentType, $properties, (int) $event->getValue());
         }
+    }
+
+    /**
+     * Pass a source's new state on to its translations.
+     *
+     * @param   integer  $sourceId     The source item id.
+     * @param   string   $contentType  The content type key.
+     * @param   array    $properties   The content type's properties.
+     * @param   integer  $state        The state the source was given.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function cascadeState(int $sourceId, string $contentType, array $properties, int $state): void
+    {
+        // -2 is the trashed state.
+        if ($state === -2) {
+            $this->cascadeTrash($sourceId, $contentType, $properties);
+
+            return;
+        }
+
+        $this->followSourceState($sourceId, $contentType, $properties, $state);
+    }
+
+    /**
+     * Keep a source's translations off the site while the source is, and bring back the ones that
+     * went off with it once it is published again (see SourceState).
+     *
+     * Only translations with a state row of ours are followed: the row is where a translation is
+     * marked as held, and an association made by hand is not this component's to change.
+     *
+     * @param   integer  $sourceId     The source item id.
+     * @param   string   $contentType  The content type key.
+     * @param   array    $properties   The content type's properties.
+     * @param   integer  $state        The source's state.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function followSourceState(int $sourceId, string $contentType, array $properties, int $state): void
+    {
+        $queueId = $this->queueId($sourceId, $contentType);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        $ids = $this->translationGroupIds($sourceId, (string) $properties['context_associations']);
+
+        if ($ids === []) {
+            return;
+        }
+
+        $stateField = (string) $properties['stateField'];
+        $held       = $this->heldLanguages($queueId);
+        $db         = $this->getDatabase();
+        $query      = $db->getQuery(true)
+            ->select($db->quoteName(['id', 'language', $stateField], ['id', 'language', 'state']))
+            ->from($db->quoteName((string) $properties['table']))
+            ->whereIn($db->quoteName('id'), $ids);
+        $db->setQuery($query);
+
+        foreach ($db->loadObjectList() as $translation) {
+            $language = (string) $translation->language;
+
+            if (!\array_key_exists($language, $held)) {
+                continue;
+            }
+
+            $change = SourceState::follow($state, (int) $translation->state, $held[$language]);
+
+            if ($change === null) {
+                continue;
+            }
+
+            // Never let a failure here break the change of state this is running inside.
+            try {
+                if ($change['state'] !== (int) $translation->state) {
+                    // publish() takes the ids by reference.
+                    $pks = [(int) $translation->id];
+                    $this->model($properties)->publish($pks, $change['state']);
+                }
+
+                $this->setHeld($queueId, $language, $change['held']);
+            } catch (\Throwable $e) {
+                Log::add(
+                    \sprintf('Could not let the %s translation of %s %d follow its source: %s', $language, $contentType, $sourceId, $e->getMessage()),
+                    Log::WARNING,
+                    'translations'
+                );
+            }
+        }
+    }
+
+    /**
+     * Per language a source has a state row in, whether that translation is held by the source.
+     *
+     * @param   integer  $queueId  The source's queue row id.
+     *
+     * @return  array<string, bool>
+     *
+     * @since   2.0.0
+     */
+    private function heldLanguages(int $queueId): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['target_language', 'held_by_source']))
+            ->from($db->quoteName('#__translations_queue_states'))
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->bind(':queueId', $queueId, ParameterType::INTEGER);
+        $db->setQuery($query);
+
+        return array_map(static fn($held): bool => (bool) $held, $db->loadAssocList('target_language', 'held_by_source') ?: []);
+    }
+
+    /**
+     * Mark a translation as held by its source, or no longer.
+     *
+     * @param   integer  $queueId   The source's queue row id.
+     * @param   string   $language  The translation's language code.
+     * @param   boolean  $held      Whether it is held.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function setHeld(int $queueId, string $language, bool $held): void
+    {
+        $value = $held ? 1 : 0;
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue_states'))
+            ->set($db->quoteName('held_by_source') . ' = :held')
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('target_language') . ' = :language')
+            ->bind(':held', $value, ParameterType::INTEGER)
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':language', $language, ParameterType::STRING);
+        $db->setQuery($query)->execute();
     }
 
     /**

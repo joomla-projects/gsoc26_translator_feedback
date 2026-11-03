@@ -27,6 +27,7 @@ use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\FormModel;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
+use Joomla\Component\Translations\Administrator\Helper\SourceState;
 use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Database\ParameterType;
 use Joomla\Event\DispatcherInterface;
@@ -348,7 +349,9 @@ class TranslatorfeedbackModel extends FormModel
         }
 
         // Publish first, so a refusal leaves no feedback behind for a retry to record twice.
-        $this->publishDraft($application);
+        if ($this->publishDraft($application)) {
+            $application->enqueueMessage(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_HELD_BY_SOURCE'), 'notice');
+        }
         $this->captureFeedback();
         $this->setTranslationState(self::STATE_PUBLISHED);
 
@@ -415,20 +418,26 @@ class TranslatorfeedbackModel extends FormModel
     /**
      * Publish the translation draft through its managing component.
      *
+     * While the source is off the site the draft waits for it instead, held by the source, and goes
+     * on the site when the source is published (see SourceState).
+     *
      * @param   CMSApplicationInterface  $application  The application, used to boot the component.
      *
-     * @return  void
+     * @return  boolean  True when the draft waits for its source instead of being published.
      *
      * @throws  \RuntimeException  If the managing component refuses to publish the draft.
      *
      * @since   0.7.0
      */
-    private function publishDraft(CMSApplicationInterface $application): void
+    private function publishDraft(CMSApplicationInterface $application): bool
     {
         $item       = $this->getItem();
         $properties = ContentTypesHelper::getProperties($item->content_type);
         $model      = $this->draftModel($application, $properties);
         $ids        = [(int) $item->translation_item['id']];
+        $stateField = (string) ($properties['stateField'] ?? '');
+        $source     = $this->loadItem((int) $item->content_id, (string) ($properties['table'] ?? ''));
+        $target     = SourceState::forNewTranslation((int) ($source[$stateField] ?? SourceState::PUBLISHED), true);
 
         // com_categories builds its change of state event from the request rather than from the rows
         // it publishes, and the event rejects a null context, so publishing from here without the
@@ -443,7 +452,7 @@ class TranslatorfeedbackModel extends FormModel
 
         try {
             // The managing component runs its own edit-state check, which can refuse a user this view allows.
-            if (!$model->publish($ids, 1)) {
+            if (!$model->publish($ids, $target['state'])) {
                 throw new \RuntimeException(Text::_('COM_TRANSLATIONS_TRANSLATOR_FEEDBACK_PUBLISH_ERROR'));
             }
         } finally {
@@ -451,6 +460,43 @@ class TranslatorfeedbackModel extends FormModel
                 $input->set('extension', $originalExtension);
             }
         }
+
+        $this->setHeldBySource((int) $item->content_id, (string) $item->content_type, (string) $item->target_language, $target['held']);
+
+        return $target['held'];
+    }
+
+    /**
+     * Record whether a translation waits for its source to be published.
+     *
+     * @param   integer  $contentId       The source item id.
+     * @param   string   $contentType     The content type key.
+     * @param   string   $targetLanguage  The translation's language code.
+     * @param   boolean  $held            Whether the translation is held by its source.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function setHeldBySource(int $contentId, string $contentType, string $targetLanguage, bool $held): void
+    {
+        $queueId = $this->getQueueId($contentId, $contentType);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        $value = $held ? 1 : 0;
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__translations_queue_states'))
+            ->set($db->quoteName('held_by_source') . ' = :held')
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->where($db->quoteName('target_language') . ' = :targetLanguage')
+            ->bind(':held', $value, ParameterType::INTEGER)
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':targetLanguage', $targetLanguage, ParameterType::STRING);
+        $db->setQuery($query)->execute();
     }
 
     /**
