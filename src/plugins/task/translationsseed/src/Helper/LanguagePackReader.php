@@ -128,6 +128,24 @@ class LanguagePackReader
     }
 
     /**
+     * A string with the double quotes an outdated pack writes as "_QQ_" made double quotes again.
+     *
+     * Joomla 4 stopped reading "_QQ_" as a double quote, so a pack that still writes it shows it
+     * on its site, and the seed task copied it into rules: pt-BR rule 3689 had it in its target.
+     * The pack means a double quote, and that is what a rule should learn.
+     *
+     * @param   string  $value  The string as the language file holds it.
+     *
+     * @return  string
+     *
+     * @since   3.0.0
+     */
+    public static function withQuotes(string $value): string
+    {
+        return str_replace('"_QQ_"', '"', $value);
+    }
+
+    /**
      * Read one language's strings from every client, keyed so the two languages line up.
      *
      * A file name is repeated across the clients, so the client is part of the identifier and
@@ -161,7 +179,7 @@ class LanguagePackReader
                 }
 
                 foreach (LanguageHelper::parseIniFile($file) as $key => $value) {
-                    $strings[$client . '/' . $fileName . '#' . $key] = $value;
+                    $strings[$client . '/' . $fileName . '#' . $key] = self::withQuotes((string) $value);
                 }
             }
         }
