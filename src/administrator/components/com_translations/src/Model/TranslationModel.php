@@ -2660,7 +2660,7 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @return  array  One entry per source and language whose translation is lost; see LostTranslations::restore().
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     public function restoreLostTranslations(bool $dryRun): array
     {

@@ -242,7 +242,7 @@ final class TranslationsTranslate extends CMSPlugin implements SubscriberInterfa
      *
      * @return  integer  The task exit status.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     protected function reassociate(ExecuteTaskEvent $event): int
     {

@@ -32,7 +32,7 @@ use Joomla\Database\ParameterType;
  * several carry it, by the fields that point at related items (an article's category). Exactly one
  * match is associated; none or several are reported, with the ids to choose from.
  *
- * @since  3.0.0
+ * @since  4.0.0
  */
 final class LostTranslations
 {
@@ -40,7 +40,7 @@ final class LostTranslations
      * The translation was found and associated, or would be on a dry run.
      *
      * @var    string
-     * @since  3.0.0
+     * @since  4.0.0
      */
     public const ASSOCIATED = 'associated';
 
@@ -48,7 +48,7 @@ final class LostTranslations
      * No item without an association has the title.
      *
      * @var    string
-     * @since  3.0.0
+     * @since  4.0.0
      */
     public const NONE = 'none';
 
@@ -56,7 +56,7 @@ final class LostTranslations
      * Several items without an association have the title, and nothing tells them apart.
      *
      * @var    string
-     * @since  3.0.0
+     * @since  4.0.0
      */
     public const SEVERAL = 'several';
 
@@ -64,7 +64,7 @@ final class LostTranslations
      * The groups read so far, keyed by content type and item id.
      *
      * @var    array<string, array<string, int>>
-     * @since  3.0.0
+     * @since  4.0.0
      */
     private array $groups = [];
 
@@ -73,7 +73,7 @@ final class LostTranslations
      *
      * @param   DatabaseInterface  $database  The site's database.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     public function __construct(private readonly DatabaseInterface $database)
     {
@@ -87,7 +87,7 @@ final class LostTranslations
      * @return  array<array{type: string, source: int, title: string, language: string, draftTitle: string, outcome: string, ids: int[]}>
      *          One entry per source and language whose translation is lost.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     public function restore(bool $dryRun): array
     {
@@ -167,7 +167,7 @@ final class LostTranslations
      *
      * @return  object[]  Each with content_id, target_language, machine_draft, and the source's title and language.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     private function translatedSources(string $contentType, string $table): array
     {
@@ -196,7 +196,7 @@ final class LostTranslations
      *
      * @return  integer[]  Their ids.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     private function unassociatedByTitle(string $table, string $context, string $language, string $title, array $properties): array
     {
@@ -249,7 +249,7 @@ final class LostTranslations
      *
      * @return  integer[]  The candidates left; all of them when no field tells them apart.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     private function narrowByRelatedFields(array $candidates, int $sourceId, string $language, string $table, array $properties): array
     {
@@ -293,7 +293,7 @@ final class LostTranslations
      *
      * @return  array<string, int>  Empty when the item has no associations.
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     private function group(int $itemId, string $context, string $table): array
     {
@@ -331,7 +331,7 @@ final class LostTranslations
      *
      * @return  void
      *
-     * @since   3.0.0
+     * @since   4.0.0
      */
     private function writeGroup(array $idsByLanguage, string $context): void
     {
