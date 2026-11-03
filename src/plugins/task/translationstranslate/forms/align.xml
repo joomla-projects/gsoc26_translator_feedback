@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fields name="params">
+		<fieldset name="task_params">
+			<field
+				name="order"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_ORDER_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_ORDER_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+			<field
+				name="homes"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_HOMES_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_HOMES_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+			<field
+				name="params"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_PARAMS_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_PARAMS_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+			<field
+				name="links"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_LINKS_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_LINKS_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+			<field
+				name="modules"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_MODULES_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_MODULES_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+		</fieldset>
+	</fields>
+</form>

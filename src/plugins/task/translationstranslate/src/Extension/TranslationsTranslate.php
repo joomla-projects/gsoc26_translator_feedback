@@ -54,7 +54,20 @@ final class TranslationsTranslate extends CMSPlugin implements SubscriberInterfa
             'langConstPrefix' => 'PLG_TASK_TRANSLATIONSTRANSLATE_RESETFAILED',
             'method'          => 'resetFailed',
         ],
+        'translationstranslate.align' => [
+            'langConstPrefix' => 'PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN',
+            'form'            => 'align',
+            'method'          => 'align',
+        ],
     ];
+
+    /**
+     * The parts of bringing translated menus in line with their source, by their switch in the form.
+     *
+     * @var    string[]
+     * @since  2.0.0
+     */
+    private const ALIGN_PARTS = ['order', 'homes', 'params', 'links', 'modules'];
 
     /**
      * Load the plugin language files automatically.
@@ -175,6 +188,39 @@ final class TranslationsTranslate extends CMSPlugin implements SubscriberInterfa
         }
 
         $this->logTask(\sprintf($this->getApplication()->getLanguage()->_('PLG_TASK_TRANSLATIONSTRANSLATE_RESETFAILED_LOG'), $reset));
+
+        return Status::OK;
+    }
+
+    /**
+     * Bring the translated menus of a site in line with their source, once.
+     *
+     * For a site whose translations were made before Translator Feedback was used: it does for
+     * them what a translation made here gets when it is made. A part switched off in the task's
+     * form is left alone.
+     *
+     * @param   ExecuteTaskEvent  $event  The onExecuteTask event.
+     *
+     * @return  integer  The task exit status.
+     *
+     * @since   2.0.0
+     */
+    protected function align(ExecuteTaskEvent $event): int
+    {
+        $params = $event->getArgument('params');
+        $parts  = array_values(array_filter(self::ALIGN_PARTS, static fn (string $part): bool => (int) ($params->$part ?? 1) === 1));
+
+        try {
+            $done = $this->translationModel()->alignWithSource($parts, $this->getApplication());
+        } catch (\Throwable $e) {
+            return $this->knockout($e->getMessage());
+        }
+
+        $language = $this->getApplication()->getLanguage();
+
+        foreach ($done as $part => $count) {
+            $this->logTask(\sprintf($language->_('PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_LOG_' . strtoupper($part)), $count));
+        }
 
         return Status::OK;
     }
