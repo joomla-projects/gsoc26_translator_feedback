@@ -21,6 +21,7 @@ use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Translations\Administrator\Event\DistilEvent;
 use Joomla\Component\Translations\Administrator\Helper\DatabaseConnection;
+use Joomla\Component\Translations\Administrator\Helper\RequestLog;
 use Joomla\Component\Translations\Administrator\Helper\RuleMerger;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Component\Translations\Administrator\Helper\RunLock;
@@ -925,22 +926,72 @@ class DistillerModel extends BaseDatabaseModel
             'sourceLanguage' => $sourceLanguage,
             'targetLanguage' => $targetLanguage,
         ]);
+        $started = microtime(true);
+        $answer  = null;
+        $failure = '';
+
         try {
             $dispatcher->dispatch('onDistil', $event);
+
+            // The first provider that answered wins, even when it distilled nothing.
+            foreach ((array) $event->getArgument('result', []) as $providerResult) {
+                if (\is_array($providerResult)) {
+                    return $answer = $providerResult;
+                }
+            }
+
+            throw new \RuntimeException('No distillation provider is enabled. Enable a RAG plugin to distil rules.');
+        } catch (\Throwable $e) {
+            $failure = $e->getMessage();
+
+            throw $e;
         } finally {
             // A long answer can outlast the server's patience with an idle connection, and the
             // rules distilled from it are stored next.
             DatabaseConnection::reconnectIfDropped($this->getDatabase());
-        }
 
-        // The first provider that answered wins, even when it distilled nothing.
-        foreach ((array) $event->getArgument('result', []) as $providerResult) {
-            if (\is_array($providerResult)) {
-                return $providerResult;
+            if (RequestLog::enabled()) {
+                RequestLog::write($this->getDatabase(), [
+                    'kind'            => RequestLog::DISTIL,
+                    'source_language' => $sourceLanguage,
+                    'target_language' => $targetLanguage,
+                    'strings'         => \count($corrections),
+                    'characters'      => (int) mb_strlen((string) json_encode($corrections, JSON_UNESCAPED_UNICODE)),
+                    'duration_ms'     => (int) round((microtime(true) - $started) * 1000),
+                    'outcome'         => $answer === null ? RequestLog::ERROR : RequestLog::OK,
+                    'message'         => $failure,
+                    'settings'        => [
+                        'max_context_rules'       => self::MAX_CONTEXT_RULES,
+                        'max_context_style_rules' => self::MAX_CONTEXT_STYLE_RULES,
+                    ],
+                    'request' => [
+                        'corrections'   => $corrections,
+                        'existingRules' => $existingRules,
+                    ],
+                    'response' => $answer,
+                ] + RequestLog::ruleCounts(self::byType($existingRules)));
             }
         }
+    }
 
-        throw new \RuntimeException('No distillation provider is enabled. Enable a RAG plugin to distil rules.');
+    /**
+     * Rules grouped by their type, as the request log counts them.
+     *
+     * @param   array  $rules  The rules, each with its rule_type.
+     *
+     * @return  array<string, array>
+     *
+     * @since   3.0.0
+     */
+    private static function byType(array $rules): array
+    {
+        $grouped = [];
+
+        foreach ($rules as $rule) {
+            $grouped[(string) (((array) $rule)['rule_type'] ?? '')][] = $rule;
+        }
+
+        return $grouped;
     }
 
     /**

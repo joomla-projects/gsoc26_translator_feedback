@@ -29,6 +29,7 @@ use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\DatabaseConnection;
 use Joomla\Component\Translations\Administrator\Helper\DraftAlias;
 use Joomla\Component\Translations\Administrator\Helper\LanguageShare;
+use Joomla\Component\Translations\Administrator\Helper\RequestLog;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Component\Translations\Administrator\Helper\RunLock;
 use Joomla\Component\Translations\Administrator\Helper\RunResult;
@@ -107,6 +108,14 @@ class TranslationModel extends BaseDatabaseModel
     private const MENU_ITEM = 'com_menus.item';
 
     /**
+     * The item being translated, for the request log: its content type and id.
+     *
+     * @var    array{0: string, 1: int}
+     * @since  3.0.0
+     */
+    private array $translating = ['', 0];
+
+    /**
      * Translate a source item into one target language.
      *
      * Creates the draft with its association to the source and sets the
@@ -179,6 +188,8 @@ class TranslationModel extends BaseDatabaseModel
             $this->relatedTitles($sourceItem, $contentType, $properties, $targetLanguage)
         );
         $fixed = $known['title'] !== null ? [self::TITLE => $known['title']] : [];
+
+        $this->translating = [$contentType, $sourceItemId];
 
         $stateId    = $this->getOrCreateStateId($sourceItemId, $contentType, $targetLanguage);
         $translated = $this->translateInChunks(
@@ -1062,8 +1073,12 @@ class TranslationModel extends BaseDatabaseModel
             $targetLanguage
         );
 
+        $started = microtime(true);
+        $answer  = null;
+        $failure = '';
+
         try {
-            return StringTranslator::translateInDocument(
+            return $answer = StringTranslator::translateInDocument(
                 $dispatcher,
                 $strings,
                 $sourceLanguage,
@@ -1072,10 +1087,45 @@ class TranslationModel extends BaseDatabaseModel
                 $documentContext,
                 $glossary
             );
+        } catch (\Throwable $e) {
+            $failure = $e->getMessage();
+
+            throw $e;
         } finally {
             // A long answer can outlast the server's patience with an idle connection, and what
             // follows - storing the answer, or the failure - needs the database.
             DatabaseConnection::reconnectIfDropped($this->getDatabase());
+
+            if (RequestLog::enabled()) {
+                RequestLog::write($this->getDatabase(), [
+                    'kind'            => RequestLog::TRANSLATE,
+                    'content_type'    => $this->translating[0],
+                    'content_id'      => $this->translating[1],
+                    'source_language' => $sourceLanguage,
+                    'target_language' => $targetLanguage,
+                    'strings'         => \count($strings),
+                    'characters'      => RequestLog::characters($strings),
+                    'duration_ms'     => (int) round((microtime(true) - $started) * 1000),
+                    'outcome'         => match (true) {
+                        $answer === null                                 => RequestLog::ERROR,
+                        array_diff_key($strings, $answer['strings']) === [] => RequestLog::OK,
+                        default                                          => RequestLog::PARTIAL,
+                    },
+                    'message'  => $failure,
+                    'settings' => [
+                        'max_rules'       => RuleRetriever::MAX_RULES,
+                        'max_style_rules' => RuleRetriever::MAX_STYLE_RULES,
+                        'chunk_chars'     => $this->chunkTargetChars(),
+                    ],
+                    'request' => [
+                        'strings'     => $strings,
+                        'context'     => $documentContext,
+                        'terminology' => $glossary,
+                        'rules'       => $rules,
+                    ],
+                    'response' => $answer,
+                ] + RequestLog::ruleCounts($rules));
+            }
         }
     }
 
