@@ -165,6 +165,14 @@ language with a home page. Every other new translation gets `0`, and a translati
 keeps the value it has, so a home page chosen by hand stays. The column also needs `client_id`,
 `language` and `published`, as `#__menu` has.
 
+**`childrenOrder`** (string, optional) - the params column where an item keeps how the
+translations of its children are ordered, `params` for a menu item. With it the item's edit form
+gets the order setting on its Translations tab: the source's order (the default), or sorted by
+translated title with a number of children kept in place at the start and at the end. The keys
+are `translations_children_order` (`source` or `title`), `translations_children_first` and
+`translations_children_last`. Only a type whose items nest under items of their own type (see
+`associatedFields`) has children to order.
+
 **`languageMenu`** (string, optional) - names the column holding the item's
 language-specific container. Menu items live in a per-language menu, so this is set to
 `menutype`. The producer derives the target-language menu from the source's value
@@ -305,6 +313,7 @@ what it names in its params, so a translated alias stands for the translated men
     "associatedFieldsFallback": { "parent_id": 1 },
     "draftForceFields": { "menuordering": 0 },
     "languageHome": "home",
+    "childrenOrder": "params",
     "languageMenu": "menutype"
 }
 ```

@@ -103,6 +103,7 @@
             "associatedFieldsFallback": { "parent_id": 1 },
             "draftForceFields": { "menuordering": 0 },
             "languageHome": "home",
+            "childrenOrder": "params",
             "languageMenu": "menutype"
         }
     }
