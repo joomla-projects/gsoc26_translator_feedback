@@ -538,6 +538,25 @@ it, so it decides how long a single request takes:
 The least you can set is 1000. An article short enough to fit in one request is sent exactly as
 it always was, in one request, so this changes nothing for ordinary content.
 
+### Logging the requests
+
+To find out why a translation came out as it did, or to tune the settings, switch on **Log
+Requests** (Options). Every request sent to a translation or distillation provider is then
+stored in the database table `#__translations_log`, one row per request - so one per part of a
+long article:
+
+- what it was for: translating or distilling, the item's content type and id, the languages;
+- the numbers: strings and characters sent, the rules of each type, the caps in force (the most
+  rules, the most style rules, **Characters per Request**), the time taken in milliseconds, and
+  how it ended - `ok`, `partial` when an answer was missing or refused, or `error` with its
+  message;
+- the texts, as JSON: the strings, the context, the terms carried and the rules sent, and the
+  answer that came back.
+
+The texts make the table grow quickly, so the option is off by default; switch it on while you
+look into something. Rows older than **Keep Logged Requests** (30 days by default) are removed
+as new ones are logged. The table is read with a database tool such as phpMyAdmin.
+
 ### Translating needs the web, not the command line
 
 Run the **translate** task through Web Cron or the Lazy Scheduler. Started from the command

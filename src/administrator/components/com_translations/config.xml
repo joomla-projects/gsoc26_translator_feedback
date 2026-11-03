@@ -47,6 +47,28 @@
 			step="500"
 			filter="integer"
 		/>
+		<field
+			name="log_requests"
+			type="radio"
+			layout="joomla.form.field.radio.switcher"
+			label="COM_TRANSLATIONS_CONFIG_LOG_REQUESTS_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_LOG_REQUESTS_DESC"
+			default="0"
+			filter="integer"
+		>
+			<option value="0">JNO</option>
+			<option value="1">JYES</option>
+		</field>
+		<field
+			name="log_days"
+			type="number"
+			label="COM_TRANSLATIONS_CONFIG_LOG_DAYS_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_LOG_DAYS_DESC"
+			default="30"
+			min="1"
+			filter="integer"
+			showon="log_requests:1"
+		/>
 	</fieldset>
 
 	<fieldset

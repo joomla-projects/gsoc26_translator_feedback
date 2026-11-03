@@ -43,7 +43,7 @@ class RuleRetriever
      * @var    integer
      * @since  0.7.0
      */
-    private const MAX_RULES = 30;
+    public const MAX_RULES = 30;
 
     /**
      * The most style rules returned, since they apply to the whole language rather than a term.
@@ -51,7 +51,7 @@ class RuleRetriever
      * @var    integer
      * @since  0.7.0
      */
-    private const MAX_STYLE_RULES = 10;
+    public const MAX_STYLE_RULES = 10;
 
     /**
      * The shortest search keyword worth matching, so noise words do not pull in rules.
