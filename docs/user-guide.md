@@ -230,6 +230,13 @@ translation would be refused over it.
 Changing an alias by hand afterwards is fine, but translating the item again builds it from the
 title once more, as saving an item in Joomla with the alias field emptied does.
 
+### Text that is never translated
+
+What is inside `<code>`, `<kbd>`, `<samp>` and `<pre>` stays as it is in every translation: a
+file name, a command, a key to press, a mail template tag such as `{USERNAME}`. The translation
+provider does not even see it. To keep a word or a column of keywords in a table untranslated,
+put it in `<code>` (in the editor: Format › Code).
+
 ### Rules
 
 The Rules view lists what the component has learned, one row per rule, for one target
