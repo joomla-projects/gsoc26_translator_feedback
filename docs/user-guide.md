@@ -306,6 +306,34 @@ the recorded machine translation as well, so it never counts as a correction by 
 Links in custom fields are pointed at the translation's language only when the item is
 translated. Links written as a full URL are left as they are.
 
+### Translated images
+
+A documentation site shows screenshots of the interface, and a translated page reads better with
+screenshots of the translated interface. Switch on *Translated Images* in the options, and a
+translation shows an image's translated version where that is on the site, and the original
+image where it is not. It is off by default.
+
+*Translated Image Folders* says where the translated images are, one line per folder:
+`source folder = translated folder`, from the site root. In the translated folder, `{language}`
+stands for the language tag (`nl-NL`) and `{lang}` for its code (`nl`). The default,
+`images = images/{language}`, shows `images/nl-NL/banners/logo.png` in a Dutch translation in
+place of `images/banners/logo.png`, once that file is there. Where more than one line fits an
+image, the most specific folder decides. guide.joomla.org, whose translated screenshots the
+image-translations package brings in from Jdocmanual, has:
+
+```
+images/manuals/user/en/images = images/manuals/user/{lang}/images
+images/help-pages = images/help-pages-{lang}
+```
+
+with `pt-BR = ptbr` under *Language Codes for Images*, for a language whose code is not the
+first part of its tag.
+
+The images in the `src`, `data-src` and `href` of the translated texts are pointed, written as
+the editor and the media field write them: `images/...` or `/images/...`. A translated image
+added later reaches the translations that are already there with the task *Bring Earlier
+Translations in Line with Their Source*, with *Links* checked.
+
 ### A menu item and its page share their title
 
 A menu item mostly has the title of the article, category or tag it opens, and the two are

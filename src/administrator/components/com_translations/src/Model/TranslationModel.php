@@ -39,6 +39,7 @@ use Joomla\Component\Translations\Administrator\Helper\StringTranslator;
 use Joomla\Component\Translations\Administrator\Helper\TextChunker;
 use Joomla\Component\Translations\Administrator\Helper\TimeBudget;
 use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
+use Joomla\Component\Translations\Administrator\Image\TranslatedImages;
 use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
 use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
 use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
@@ -1499,12 +1500,13 @@ class TranslationModel extends BaseDatabaseModel
         $translatableFields = (array) ($properties['translatableFields'] ?? []);
         $fields             = $this->packTranslatedFields($sourceItem, $translatableFields, $translated);
 
-        // The internal links in the text open the source language's pages; point them at this language's.
-        $links = new LinkTranslator(new DatabaseLinkLookup($this->getDatabase()));
+        // The internal links in the text open the source language's pages; point them at this language's,
+        // and the images at their translations where the option has them.
+        $rewrite = $this->textRewriter();
 
         foreach ($fields as $field => $value) {
             if (\is_string($value)) {
-                $fields[$field] = $links->translateHtml($value, $targetLanguage);
+                $fields[$field] = $rewrite($value, $targetLanguage);
             }
         }
 
@@ -1519,7 +1521,7 @@ class TranslationModel extends BaseDatabaseModel
 
         foreach ($customFields as $name => $customField) {
             $draftCustomFields[$name] = $customField['translatable']
-                ? $links->translateHtml(
+                ? $rewrite(
                     (string) ($translated[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] ?? $customField['value']),
                     $targetLanguage
                 )
@@ -2884,10 +2886,10 @@ class TranslationModel extends BaseDatabaseModel
      */
     private function alignTexts(string $sourceLanguage): int
     {
-        $db         = $this->getDatabase();
-        $texts      = new TranslatedTexts($db);
-        $translator = new LinkTranslator(new DatabaseLinkLookup($db));
-        $changed    = 0;
+        $db      = $this->getDatabase();
+        $texts   = new TranslatedTexts($db);
+        $rewrite = $this->textRewriter();
+        $changed = 0;
 
         foreach (ContentTypesHelper::getContentTypes() as $contentType) {
             $properties = ContentTypesHelper::getProperties($contentType);
@@ -2916,12 +2918,32 @@ class TranslationModel extends BaseDatabaseModel
                     $contentType,
                     (int) $row['id'],
                     $language,
-                    static fn (string $html): string => $translator->translateHtml($html, $language)
+                    static fn (string $html): string => $rewrite($html, $language)
                 ) ? 1 : 0;
             }
         }
 
         return $changed;
+    }
+
+    /**
+     * What a translation's text goes through: its internal links pointed at the pages of its language,
+     * and, while the Translated Images option is on, its images at their translations on the site.
+     *
+     * @return  \Closure(string, string): string  Given the HTML and the translation's language.
+     *
+     * @since   4.0.0
+     */
+    private function textRewriter(): \Closure
+    {
+        $links  = new LinkTranslator(new DatabaseLinkLookup($this->getDatabase()));
+        $images = TranslatedImages::fromParams(ComponentHelper::getParams('com_translations'), JPATH_ROOT);
+
+        return static function (string $html, string $language) use ($links, $images): string {
+            $html = $links->translateHtml($html, $language);
+
+            return $images === null ? $html : $images->translateHtml($html, $language);
+        };
     }
 
     /**

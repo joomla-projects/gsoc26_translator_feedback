@@ -69,6 +69,38 @@
 			filter="integer"
 			showon="log_requests:1"
 		/>
+		<field
+			name="translated_images"
+			type="radio"
+			layout="joomla.form.field.radio.switcher"
+			label="COM_TRANSLATIONS_CONFIG_TRANSLATED_IMAGES_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_TRANSLATED_IMAGES_DESC"
+			default="0"
+			filter="integer"
+		>
+			<option value="0">JNO</option>
+			<option value="1">JYES</option>
+		</field>
+		<field
+			name="image_folders"
+			type="textarea"
+			label="COM_TRANSLATIONS_CONFIG_IMAGE_FOLDERS_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_IMAGE_FOLDERS_DESC"
+			default="images = images/{language}"
+			rows="4"
+			filter="raw"
+			showon="translated_images:1"
+		/>
+		<field
+			name="image_language_codes"
+			type="textarea"
+			label="COM_TRANSLATIONS_CONFIG_IMAGE_LANGUAGE_CODES_LABEL"
+			description="COM_TRANSLATIONS_CONFIG_IMAGE_LANGUAGE_CODES_DESC"
+			default=""
+			rows="3"
+			filter="raw"
+			showon="translated_images:1"
+		/>
 	</fieldset>
 
 	<fieldset
