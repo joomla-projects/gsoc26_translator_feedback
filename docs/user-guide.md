@@ -246,11 +246,22 @@ Among its siblings it takes the place its original has, whatever order the items
 in, so a translated menu keeps the order of the original menu. A menu item translated before is
 not moved again, so an order changed by hand stays.
 
+A list that is alphabetical in the source language is not alphabetical once its titles are
+translated: the field types under Fields, for example. For such a list, open the parent menu item
+and set **Order of Translated Child Items** on its **Translations** tab to *By translated title*.
+The translations of its child items are then sorted by their own title in each language. **Keep
+First in Place** and **Keep Last in Place** keep that many child items at the start and at the end
+in the order they have in the source, for an overview page before the list or a "See also" after
+it. A sorted list stays sorted: a child item translated again, or whose translated title is
+changed by a translator or by hand, moves to its place in the alphabet. Changing the setting puts
+the translations already made in the new order at once.
+
 Joomla's language switcher only lists a language that has a home page. The translation of the
 source language's home page becomes the home page of its language, when that language has none
 yet; it shows in the switcher once it is published. This needs a home page for the source
-language itself, besides the one for *All* languages that Joomla always has. A home page you
-choose by hand stays, also when its menu item is translated again.
+language itself, besides the one for *All* languages that Joomla always has. Keep that one: a
+language without a home page of its own shows it, and without it such a language's pages fail. A
+home page you choose by hand stays, also when its menu item is translated again.
 
 At the root of a menu Joomla keeps a few names for itself: `component`, and every folder in the site root. A menu item that
 translates to one of those - "Media", "Plugins", "Modules" - takes the language-appended

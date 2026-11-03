@@ -39,6 +39,7 @@ use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
 use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
 use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
+use Joomla\Component\Translations\Administrator\Order\SiblingOrder;
 use Joomla\Database\ParameterType;
 use Joomla\Database\QueryInterface;
 use Joomla\Filesystem\Folder;
@@ -1613,10 +1614,8 @@ class TranslationModel extends BaseDatabaseModel
         $this->nestEarlierChildren($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
 
         // A new translation takes its source's place among its siblings; one translated before keeps
-        // the place it has, which someone may have chosen by hand.
-        if ($newState !== null) {
-            $this->placeLikeSource($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
-        }
+        // the place it has, which someone may have chosen by hand, unless its parent sorts by title.
+        $this->placeLikeSource($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties, $newState !== null);
 
         // A category's custom fields are scoped to its own id, so a field assigned only to the source
         // category does not reach the new draft on save; copy those assignments and store their values.
@@ -2230,7 +2229,7 @@ class TranslationModel extends BaseDatabaseModel
                 $node->setLocation($draftId, 'last-child');
                 $node->store();
 
-                $this->placeLikeSource($model, $childId, $translatedChildId, $targetLanguage, $contentType, $properties);
+                $this->placeLikeSource($model, $childId, $translatedChildId, $targetLanguage, $contentType, $properties, true);
             }
         }
     }
@@ -2245,6 +2244,10 @@ class TranslationModel extends BaseDatabaseModel
      * are translated in. A translation still waiting at the root for its parent's is placed once it
      * is moved under that parent, and a sibling's translation someone moved elsewhere is passed over.
      *
+     * A parent can ask for its children's translations to be sorted by their translated title (see
+     * SiblingOrder). Its children are then placed in that order instead, and placed again each time
+     * they are translated, because a translation can come back with another title.
+     *
      * Only a type whose items nest under items of their own type has siblings to keep in order.
      *
      * @param   AdminModel            $model           The managing component's model, for its table.
@@ -2253,6 +2256,7 @@ class TranslationModel extends BaseDatabaseModel
      * @param   string                $targetLanguage  The translation's language.
      * @param   string                $contentType     The content type key, e.g. 'com_menus.item'.
      * @param   array<string, mixed>  $properties      The content type's properties from the map.
+     * @param   boolean               $isNew           Whether the translation was just made; one made before keeps its place unless sorted.
      *
      * @return  void
      *
@@ -2264,7 +2268,8 @@ class TranslationModel extends BaseDatabaseModel
         int $translationId,
         string $targetLanguage,
         string $contentType,
-        array $properties
+        array $properties,
+        bool $isNew
     ): void {
         $parentField = array_search($contentType, (array) ($properties['associatedFields'] ?? []), true);
 
@@ -2303,7 +2308,13 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         $sourceParent = (int) $source[$parentField];
-        $query        = $db->getQuery(true)
+        $sorted       = $sourceRoot ? null : $this->childrenOrder($sourceParent, $properties);
+
+        if (!$isNew && $sorted === null) {
+            return;
+        }
+
+        $query = $db->getQuery(true)
             ->select($db->quoteName('id'))
             ->from($db->quoteName($table))
             ->where($db->quoteName($parentField) . ' = :parent')
@@ -2317,6 +2328,17 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         $siblings = array_map('intval', $db->setQuery($query)->loadColumn());
+
+        if ($sorted !== null) {
+            $siblings = SiblingOrder::arrange(
+                $siblings,
+                $this->translatedTitles($siblings, $contentType, $targetLanguage, $table),
+                $sorted['first'],
+                $sorted['last'],
+                $targetLanguage
+            );
+        }
+
         $position = array_search($sourceItemId, $siblings, true);
 
         if ($position === false) {
@@ -2349,6 +2371,148 @@ class TranslationModel extends BaseDatabaseModel
         if ($first !== null) {
             $node->moveByReference($first, 'before', $translationId);
         }
+    }
+
+    /**
+     * Put the translations of a source item's children in their order, all of them.
+     *
+     * A translation is placed when it is made. When the parent's setting changes afterwards, from
+     * the source's order to sorted by title or back, the translations already made are put in the
+     * new order here.
+     *
+     * @param   integer                  $sourceParentId  The source parent.
+     * @param   string                   $contentType     The content type key, e.g. 'com_menus.item'.
+     * @param   string                   $targetLanguage  The language whose translations to order.
+     * @param   CMSApplicationInterface  $application     The application, used to boot the managing component.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    public function arrangeTranslatedChildren(
+        int $sourceParentId,
+        string $contentType,
+        string $targetLanguage,
+        CMSApplicationInterface $application
+    ): void {
+        $properties  = ContentTypesHelper::getProperties($contentType);
+        $parentField = array_search($contentType, (array) ($properties['associatedFields'] ?? []), true);
+
+        if (!\is_string($parentField)) {
+            return;
+        }
+
+        $table = (string) ($properties['table'] ?? '');
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('id'))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName($parentField) . ' = :parent')
+            ->bind(':parent', $sourceParentId, ParameterType::INTEGER)
+            ->order($db->quoteName('lft') . ' ASC');
+        $children = array_map('intval', $db->setQuery($query)->loadColumn());
+        $sorted   = $this->childrenOrder($sourceParentId, $properties);
+
+        if ($sorted !== null) {
+            $children = SiblingOrder::arrange(
+                $children,
+                $this->translatedTitles($children, $contentType, $targetLanguage, $table),
+                $sorted['first'],
+                $sorted['last'],
+                $targetLanguage
+            );
+        }
+
+        $component = $application->bootComponent((string) ($properties['component'] ?? ''));
+
+        if (!$component instanceof MVCFactoryServiceInterface) {
+            return;
+        }
+
+        $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
+
+        if (!$model instanceof AdminModel) {
+            return;
+        }
+
+        // Placed one by one in the order they go, each lands after the one placed before it.
+        foreach ($children as $childId) {
+            $translationId = $this->translatedRelatedId($childId, $contentType, $targetLanguage);
+
+            if ($translationId !== null) {
+                $this->placeLikeSource($model, $childId, $translationId, $targetLanguage, $contentType, $properties, true);
+            }
+        }
+    }
+
+    /**
+     * How a source parent wants its children's translations ordered.
+     *
+     * @param   integer               $sourceParentId  The source parent.
+     * @param   array<string, mixed>  $properties      The content type's properties from the map.
+     *
+     * @return  array{first: int, last: int}|null  Null when the source's order is kept.
+     *
+     * @since   2.0.0
+     */
+    private function childrenOrder(int $sourceParentId, array $properties): ?array
+    {
+        $column = (string) ($properties['childrenOrder'] ?? '');
+
+        if ($column === '') {
+            return null;
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName($column))
+            ->from($db->quoteName((string) ($properties['table'] ?? '')))
+            ->where($db->quoteName('id') . ' = :id')
+            ->bind(':id', $sourceParentId, ParameterType::INTEGER);
+
+        return SiblingOrder::fromParams((string) $db->setQuery($query)->loadResult());
+    }
+
+    /**
+     * The titles of the translations of some source items, keyed by source item.
+     *
+     * @param   int[]   $sourceIds       The source items.
+     * @param   string  $contentType     The content type key, e.g. 'com_menus.item'.
+     * @param   string  $targetLanguage  The translations' language.
+     * @param   string  $table           The content type's table.
+     *
+     * @return  array<int, string>  Only the source items with a translation.
+     *
+     * @since   2.0.0
+     */
+    private function translatedTitles(array $sourceIds, string $contentType, string $targetLanguage, string $table): array
+    {
+        $translations = [];
+
+        foreach ($sourceIds as $sourceId) {
+            $translationId = $this->translatedRelatedId($sourceId, $contentType, $targetLanguage);
+
+            if ($translationId !== null) {
+                $translations[$translationId] = $sourceId;
+            }
+        }
+
+        if ($translations === []) {
+            return [];
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['id', 'title']))
+            ->from($db->quoteName($table))
+            ->whereIn($db->quoteName('id'), array_keys($translations));
+        $titles = [];
+
+        foreach ($db->setQuery($query)->loadAssocList() as $row) {
+            $titles[$translations[(int) $row['id']]] = (string) $row['title'];
+        }
+
+        return $titles;
     }
 
     /**

@@ -31,6 +31,7 @@ use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Table\ContentHistory;
+use Joomla\CMS\Table\Nested;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\SourceState;
 use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
@@ -38,6 +39,8 @@ use Joomla\Component\Translations\Administrator\Link\HtmlLinks;
 use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
 use Joomla\Component\Translations\Administrator\Link\SourceChange;
 use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
+use Joomla\Component\Translations\Administrator\Model\TranslationModel;
+use Joomla\Component\Translations\Administrator\Order\SiblingOrder;
 use Joomla\Database\DatabaseAwareInterface;
 use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Database\ParameterType;
@@ -108,6 +111,18 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     private array $capturedTitleChanges = [];
 
     /**
+     * Menu items whose children's translations are to be put in order once the save has succeeded:
+     * per saved item, the source parent and the language, or null for every language.
+     *
+     * A source item whose order setting changed has its own children reordered; a translation whose
+     * title changed is reordered among its siblings when its source's parent sorts by title.
+     *
+     * @var    array<int, array{parent: int, language: ?string}>
+     * @since  2.0.0
+     */
+    private array $capturedReorders = [];
+
+    /**
      * The toggle value captured during onContentBeforeSave, for the models that dispatch the after
      * save event without the submitted data. A new item has no id yet at that point, so this cannot
      * be keyed by id the way a title change is.
@@ -140,7 +155,8 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     }
 
     /**
-     * Add the "no need for translation" toggle to a source-language item's form.
+     * Add the "no need for translation" toggle to a source-language item's form, and for a type
+     * whose items have children, how the children's translations are ordered.
      *
      * @param   PrepareFormEvent  $event  The event.
      *
@@ -152,7 +168,9 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
     {
         $form = $event->getForm();
 
-        if (ContentTypesHelper::getContentTypeForOptOutForm($form->getName()) === null) {
+        $contentType = ContentTypesHelper::getContentTypeForOptOutForm($form->getName());
+
+        if ($contentType === null) {
             return;
         }
 
@@ -165,6 +183,10 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         }
 
         $form->loadFile(\dirname(__DIR__, 2) . '/forms/translationoptout.xml');
+
+        if (isset(ContentTypesHelper::getProperties($contentType)['childrenOrder'])) {
+            $form->loadFile(\dirname(__DIR__, 2) . '/forms/childrenorder.xml');
+        }
     }
 
     /**
@@ -252,8 +274,12 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
         $queueId = $this->queueId($itemId, $contentType);
 
         if ($queueId === null) {
+            $this->captureRetitledTranslation($item, $contentType, $properties);
+
             return;
         }
+
+        $this->captureOrderChange($item, $properties);
 
         // The table is bound with the submitted data before this event, so its title is the new one.
         $storedTitle = $this->storedTitle($itemId, (string) ($properties['table'] ?? ''));
@@ -282,6 +308,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         if ($contentType === 'com_menus.item') {
             $this->invalidateRenamedMenuItem((int) $event->getItem()->id);
+            $this->arrangeCapturedChildren($event->getItem(), $contentType);
         }
 
         $properties = $this->managedProperties($contentType);
@@ -1256,6 +1283,188 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
                 'translations'
             );
         }
+    }
+
+    /**
+     * Note a source item whose children's order setting is about to change.
+     *
+     * @param   object                $item        The item, bound with the submitted data.
+     * @param   array<string, mixed>  $properties  The content type's properties from the map.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function captureOrderChange(object $item, array $properties): void
+    {
+        $column = (string) ($properties['childrenOrder'] ?? '');
+
+        if ($column === '') {
+            return;
+        }
+
+        $itemId = (int) $item->id;
+        $stored = $this->storedColumn($itemId, (string) ($properties['table'] ?? ''), $column);
+
+        if (SiblingOrder::fromParams($stored) !== SiblingOrder::fromParams((string) ($item->$column ?? ''))) {
+            $this->capturedReorders[$itemId] = ['parent' => $itemId, 'language' => null];
+        }
+    }
+
+    /**
+     * Note a translation whose title is about to change, when its source's parent sorts by title.
+     *
+     * A translator's corrected title, or one changed by hand, puts the translation in another place
+     * in the alphabet. Under a parent that keeps the source's order its place does not depend on its
+     * title, and one moved by hand stays where it was put.
+     *
+     * @param   object                $item         The item, bound with the submitted data.
+     * @param   string                $contentType  The content type key.
+     * @param   array<string, mixed>  $properties   The content type's properties from the map.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function captureRetitledTranslation(object $item, string $contentType, array $properties): void
+    {
+        $column = (string) ($properties['childrenOrder'] ?? '');
+        $table  = (string) ($properties['table'] ?? '');
+        $itemId = (int) $item->id;
+
+        if ($column === '' || $this->storedTitle($itemId, $table) === (string) $item->title) {
+            return;
+        }
+
+        $queueId = $this->sourceQueueIdForTranslation($itemId, (string) ($properties['context_associations'] ?? ''), $contentType);
+
+        if ($queueId === null) {
+            return;
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('source.parent_id'))
+            ->from($db->quoteName('#__translations_queue', 'queue'))
+            ->join('INNER', $db->quoteName($table, 'source'), $db->quoteName('source.id') . ' = ' . $db->quoteName('queue.content_id'))
+            ->where($db->quoteName('queue.id') . ' = :queueId')
+            ->bind(':queueId', $queueId, ParameterType::INTEGER);
+        $sourceParent = (int) $db->setQuery($query)->loadResult();
+
+        if ($sourceParent > 0 && SiblingOrder::fromParams($this->storedColumn($sourceParent, $table, $column)) !== null) {
+            $this->capturedReorders[$itemId] = ['parent' => $sourceParent, 'language' => (string) $item->language];
+        }
+    }
+
+    /**
+     * Put the translations of a parent's children in order, as noted before the save.
+     *
+     * The menu item model rebuilds the tree from the saved item once this event is done, from the
+     * place in the tree its table object still holds. Moving items here changes that place, so the
+     * table object is brought up to date afterwards; otherwise the rebuild puts the saved item back
+     * where it was and leaves two items in one place.
+     *
+     * @param   object  $item         The saved item: the managing model's table object.
+     * @param   string  $contentType  The content type key.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function arrangeCapturedChildren(object $item, string $contentType): void
+    {
+        $itemId = (int) $item->id;
+
+        if (!isset($this->capturedReorders[$itemId])) {
+            return;
+        }
+
+        ['parent' => $parent, 'language' => $language] = $this->capturedReorders[$itemId];
+        unset($this->capturedReorders[$itemId]);
+
+        // Never let a failure here break the save this is running inside.
+        try {
+            $application = $this->getApplication();
+            $component   = $application?->bootComponent('com_translations');
+
+            if (!$component instanceof MVCFactoryServiceInterface) {
+                return;
+            }
+
+            $model = $component->getMVCFactory()->createModel('Translation', 'Administrator', ['ignore_request' => true]);
+
+            if (!$model instanceof TranslationModel) {
+                return;
+            }
+
+            $properties = (array) ContentTypesHelper::getProperties($contentType);
+            $languages  = $language !== null ? [$language] : $this->languagesOf(
+                $this->translationGroupIds($parent, (string) ($properties['context_associations'] ?? '')),
+                (string) ($properties['table'] ?? '')
+            );
+
+            foreach ($languages as $targetLanguage) {
+                $model->arrangeTranslatedChildren($parent, $contentType, $targetLanguage, $application);
+            }
+
+            if ($item instanceof Nested) {
+                $item->load($itemId);
+            }
+        } catch (\Throwable $e) {
+            Log::add(
+                \sprintf('Could not order the translated children of menu item %d: %s', $parent, $e->getMessage()),
+                Log::WARNING,
+                'translations'
+            );
+        }
+    }
+
+    /**
+     * The languages of some items.
+     *
+     * @param   int[]   $ids    The items.
+     * @param   string  $table  Their table.
+     *
+     * @return  string[]
+     *
+     * @since   2.0.0
+     */
+    private function languagesOf(array $ids, string $table): array
+    {
+        if ($ids === []) {
+            return [];
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('DISTINCT ' . $db->quoteName('language'))
+            ->from($db->quoteName($table))
+            ->whereIn($db->quoteName('id'), $ids);
+
+        return $db->setQuery($query)->loadColumn();
+    }
+
+    /**
+     * A column's value as an item has it in the database.
+     *
+     * @param   integer  $itemId  The item.
+     * @param   string   $table   Its table.
+     * @param   string   $column  The column.
+     *
+     * @return  string
+     *
+     * @since   2.0.0
+     */
+    private function storedColumn(int $itemId, string $table, string $column): string
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName($column))
+            ->from($db->quoteName($table))
+            ->where($db->quoteName('id') . ' = :itemId')
+            ->bind(':itemId', $itemId, ParameterType::INTEGER);
+
+        return (string) $db->setQuery($query)->loadResult();
     }
 
     /**
