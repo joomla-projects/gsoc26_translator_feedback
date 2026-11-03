@@ -1510,9 +1510,19 @@ class TranslationModel extends BaseDatabaseModel
             $draft[$stateField] = $newState['state'];
         }
 
-        // Force any fields the draft must hold at a fixed value, e.g. a translated menu item is never the home item.
+        // Force any fields the draft must hold at a fixed value, e.g. the ordering a menu item model reads.
         foreach ((array) ($properties['draftForceFields'] ?? []) as $field => $value) {
             $draft[$field] = $value;
+        }
+
+        // A language's home page is the translation of the source language's home page, while the language
+        // has none: without one, Joomla's language switcher leaves the language out. Any other new translation
+        // is no home page, and one that exists keeps whether it is, which may have been chosen by hand.
+        $homeField = (string) ($properties['languageHome'] ?? '');
+
+        if ($homeField !== '' && $draft['id'] === 0) {
+            $draft[$homeField] = (int) ($sourceItem[$homeField] ?? 0) === 1
+                && !$this->languageHasHome((string) ($properties['table'] ?? ''), $homeField, $targetLanguage) ? 1 : 0;
         }
 
         // A content type kept in language specific containers (a menu item lives in a menu) gets the target
@@ -1901,6 +1911,39 @@ class TranslationModel extends BaseDatabaseModel
         // Rebuild it as com_menus does: the separator is named rather than taken from
         // arg_separator.output, which a site can set to an entity, and the ids keep their brackets.
         return 'index.php?' . urldecode(http_build_query($arguments, '', '&'));
+    }
+
+    /**
+     * Whether a language has a home page already, among the items that are not trashed.
+     *
+     * @param   string  $table      The content type's table.
+     * @param   string  $homeField  The column that marks a language's home page.
+     * @param   string  $language   The language code.
+     *
+     * @return  boolean
+     *
+     * @since   2.0.0
+     */
+    private function languageHasHome(string $table, string $homeField, string $language): bool
+    {
+        $home    = 1;
+        $client  = 0;
+        $trashed = -2;
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select('COUNT(*)')
+            ->from($db->quoteName($table))
+            ->where($db->quoteName($homeField) . ' = :home')
+            ->where($db->quoteName('language') . ' = :language')
+            ->where($db->quoteName('client_id') . ' = :client')
+            ->where($db->quoteName('published') . ' <> :trashed')
+            ->bind(':home', $home, ParameterType::INTEGER)
+            ->bind(':language', $language, ParameterType::STRING)
+            ->bind(':client', $client, ParameterType::INTEGER)
+            ->bind(':trashed', $trashed, ParameterType::INTEGER);
+
+        return (int) $db->setQuery($query)->loadResult() > 0;
     }
 
     /**

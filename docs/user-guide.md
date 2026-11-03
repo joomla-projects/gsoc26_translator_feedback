@@ -246,6 +246,12 @@ Among its siblings it takes the place its original has, whatever order the items
 in, so a translated menu keeps the order of the original menu. A menu item translated before is
 not moved again, so an order changed by hand stays.
 
+Joomla's language switcher only lists a language that has a home page. The translation of the
+source language's home page becomes the home page of its language, when that language has none
+yet; it shows in the switcher once it is published. This needs a home page for the source
+language itself, besides the one for *All* languages that Joomla always has. A home page you
+choose by hand stays, also when its menu item is translated again.
+
 At the root of a menu Joomla keeps a few names for itself: `component`, and every folder in the site root. A menu item that
 translates to one of those - "Media", "Plugins", "Modules" - takes the language-appended
 alias instead, as it would from any other alias already in use. Two languages may share a

@@ -101,7 +101,8 @@
             },
             "associatedFields": { "parent_id": "com_menus.item" },
             "associatedFieldsFallback": { "parent_id": 1 },
-            "draftForceFields": { "home": 0, "menuordering": 0 },
+            "draftForceFields": { "menuordering": 0 },
+            "languageHome": "home",
             "languageMenu": "menutype"
         }
     }

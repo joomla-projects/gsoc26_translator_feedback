@@ -155,9 +155,15 @@ translate is never offered.
 **`draftForceFields`** (object, optional) - fields pinned to a fixed value on the draft,
 regardless of the source. Where `draftCopyFields` copies the source value, each entry
 here is `column: value`, or a value the managing model reads beside the columns. A menu
-item uses `{ "home": 0, "menuordering": 0 }`: a translation never becomes the site's home
-page, and translating it again leaves it where it is among its siblings, where Joomla's
-menu item model would otherwise read an ordering that was never given.
+item uses `{ "menuordering": 0 }`: translating it again leaves it where it is among its
+siblings, where Joomla's menu item model would otherwise read an ordering that was never given.
+
+**`languageHome`** (string, optional) - the column that marks a language's home page, `home`
+for a menu item. A new translation of the source language's home page becomes the home page of
+its language when that language has none yet, because Joomla's language switcher only lists a
+language with a home page. Every other new translation gets `0`, and a translation that exists
+keeps the value it has, so a home page chosen by hand stays. The column also needs `client_id`,
+`language` and `published`, as `#__menu` has.
 
 **`languageMenu`** (string, optional) - names the column holding the item's
 language-specific container. Menu items live in a per-language menu, so this is set to
@@ -262,7 +268,7 @@ category's tags are stored under `com_content.category`, so the category entry s
 ## Example: the menu item entry
 
 A menu item translates only its `title`. It is placed in the derived per-language menu under the
-translation of its parent, at the root while that has none, with `home` forced off, and `linkTargets` re-points its `link` at the translation of whatever it
+translation of its parent, at the root while that has none, as the home page of its language when it translates the source language's home page and the language has none yet, and `linkTargets` re-points its `link` at the translation of whatever it
 points at, so a translated menu item opens the translated page. `paramTargets` does the same for
 what it names in its params, so a translated alias stands for the translated menu item.
 
@@ -297,7 +303,8 @@ what it names in its params, so a translated alias stands for the translated men
     },
     "associatedFields": { "parent_id": "com_menus.item" },
     "associatedFieldsFallback": { "parent_id": 1 },
-    "draftForceFields": { "home": 0, "menuordering": 0 },
+    "draftForceFields": { "menuordering": 0 },
+    "languageHome": "home",
     "languageMenu": "menutype"
 }
 ```
