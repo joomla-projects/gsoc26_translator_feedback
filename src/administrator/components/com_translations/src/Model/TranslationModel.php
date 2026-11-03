@@ -25,6 +25,7 @@ use Joomla\CMS\MVC\Model\BaseDatabaseModel;
 use Joomla\CMS\Plugin\PluginHelper;
 use Joomla\Component\Fields\Administrator\Helper\FieldsHelper;
 use Joomla\Component\Fields\Administrator\Model\FieldModel;
+use Joomla\Component\Translations\Administrator\Association\LostTranslations;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\DatabaseConnection;
 use Joomla\Component\Translations\Administrator\Helper\DraftAlias;
@@ -2650,6 +2651,20 @@ class TranslationModel extends BaseDatabaseModel
         if ($first !== null) {
             $node->moveByReference($first, 'before', $translationId);
         }
+    }
+
+    /**
+     * Find the translations that lost their association with their source, and associate them again.
+     *
+     * @param   boolean  $dryRun  Only find them.
+     *
+     * @return  array  One entry per source and language whose translation is lost; see LostTranslations::restore().
+     *
+     * @since   4.0.0
+     */
+    public function restoreLostTranslations(bool $dryRun): array
+    {
+        return (new LostTranslations($this->getDatabase()))->restore($dryRun);
     }
 
     /**

@@ -20,6 +20,7 @@ use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\Component\Scheduler\Administrator\Event\ExecuteTaskEvent;
 use Joomla\Component\Scheduler\Administrator\Task\Status;
 use Joomla\Component\Scheduler\Administrator\Traits\TaskPluginTrait;
+use Joomla\Component\Translations\Administrator\Association\LostTranslations;
 use Joomla\Component\Translations\Administrator\Helper\RunResult;
 use Joomla\Component\Translations\Administrator\Helper\TimeBudget;
 use Joomla\Component\Translations\Administrator\Model\TranslationModel;
@@ -58,6 +59,11 @@ final class TranslationsTranslate extends CMSPlugin implements SubscriberInterfa
             'langConstPrefix' => 'PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN',
             'form'            => 'align',
             'method'          => 'align',
+        ],
+        'translationstranslate.reassociate' => [
+            'langConstPrefix' => 'PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE',
+            'form'            => 'reassociate',
+            'method'          => 'reassociate',
         ],
     ];
 
@@ -220,6 +226,59 @@ final class TranslationsTranslate extends CMSPlugin implements SubscriberInterfa
 
         foreach ($done as $part => $count) {
             $this->logTask(\sprintf($language->_('PLG_TASK_TRANSLATIONSTRANSLATE_ALIGN_LOG_' . strtoupper($part)), $count));
+        }
+
+        return Status::OK;
+    }
+
+    /**
+     * Find the translations that lost their association with their source, and associate them again.
+     *
+     * A dry run, the default, only reports what it would associate. A translation that cannot be
+     * told for sure - no item or several carry its title - is reported, with the ids to choose
+     * from, for a person to associate.
+     *
+     * @param   ExecuteTaskEvent  $event  The onExecuteTask event.
+     *
+     * @return  integer  The task exit status.
+     *
+     * @since   4.0.0
+     */
+    protected function reassociate(ExecuteTaskEvent $event): int
+    {
+        $dryRun   = (int) ($event->getArgument('params')->dry_run ?? 1) === 1;
+        $language = $this->getApplication()->getLanguage();
+        $prefix   = $dryRun ? $language->_('PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_LOG_DRY_RUN') : '';
+
+        try {
+            $found = $this->translationModel()->restoreLostTranslations($dryRun);
+        } catch (\Throwable $e) {
+            return $this->knockout($e->getMessage());
+        }
+
+        $associated = 0;
+
+        foreach ($found as $lost) {
+            $associated += $lost['outcome'] === LostTranslations::ASSOCIATED ? 1 : 0;
+
+            $this->logTask(
+                $prefix . \sprintf(
+                    $language->_('PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_LOG_' . strtoupper($lost['outcome'])),
+                    $lost['type'],
+                    $lost['source'],
+                    $lost['title'],
+                    $lost['language'],
+                    $lost['draftTitle'],
+                    implode(', ', $lost['ids'])
+                ),
+                $lost['outcome'] === LostTranslations::ASSOCIATED ? 'info' : 'warning'
+            );
+        }
+
+        $this->logTask($prefix . \sprintf($language->_('PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_LOG_DONE'), $associated, \count($found) - $associated));
+
+        if (!$dryRun && $associated > 0) {
+            $this->logTask($language->_('PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_LOG_NEXT'));
         }
 
         return Status::OK;
