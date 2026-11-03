@@ -51,6 +51,16 @@ class StringTranslator
     public const FACTOR = 4;
 
     /**
+     * How many words a text needs before an answer that is the same text counts as not translated.
+     *
+     * A name, a product or a short title can stay as it is in another language; a sentence cannot.
+     *
+     * @var    integer
+     * @since  3.0.0
+     */
+    public const UNCHANGED_WORDS = 8;
+
+    /**
      * The elements whose text is never translated: code, keyboard input, program output.
      *
      * In the user guide these hold what a reader types or reads on the screen exactly as it is - a
@@ -148,7 +158,11 @@ class StringTranslator
         foreach ((array) $event->getArgument('result', []) as $providerResult) {
             if (\is_array($providerResult) && $providerResult !== []) {
                 return [
-                    'strings'  => self::restoreUntranslated($sent, self::ofTheirSources($sent, $providerResult), $held),
+                    'strings'  => self::restoreUntranslated(
+                        $sent,
+                        self::translatedAtAll($sent, self::ofTheirSources($sent, $providerResult), $sourceLanguage, $targetLanguage),
+                        $held
+                    ),
                     'glossary' => $event->getGlossary(),
                 ];
             }
@@ -203,6 +217,57 @@ class StringTranslator
         }
 
         return $kept;
+    }
+
+    /**
+     * Keep only the answers that are translations at all, not their source text sent back.
+     *
+     * On guide.joomla.org a Portuguese article came back exactly as the English one, and was saved
+     * as its translation. An answer that is its source text unchanged, for a text of at least
+     * UNCHANGED_WORDS words, is left out, so it is asked for again, as a refused answer is. What is
+     * held back as code is not counted, and between two variants of one language, such as en-GB
+     * and en-US, a text may well stay as it is, so then every answer is kept.
+     *
+     * @param   array   $strings         The strings as they were sent.
+     * @param   array   $translations    What the provider answered, keyed the same.
+     * @param   string  $sourceLanguage  The source language code.
+     * @param   string  $targetLanguage  The target language code.
+     *
+     * @return  array  The answers that are translations.
+     *
+     * @since   3.0.0
+     */
+    public static function translatedAtAll(array $strings, array $translations, string $sourceLanguage, string $targetLanguage): array
+    {
+        if (strtok($sourceLanguage, '-') === strtok($targetLanguage, '-')) {
+            return $translations;
+        }
+
+        foreach ($translations as $key => $translation) {
+            $source = (string) ($strings[$key] ?? '');
+
+            if (trim((string) $translation) === trim($source) && self::words($source) >= self::UNCHANGED_WORDS) {
+                unset($translations[$key]);
+            }
+        }
+
+        return $translations;
+    }
+
+    /**
+     * How many words a text has, leaving out its markup and the text held back.
+     *
+     * @param   string  $text  The text as sent.
+     *
+     * @return  integer
+     *
+     * @since   3.0.0
+     */
+    private static function words(string $text): int
+    {
+        $text = html_entity_decode(strip_tags((string) preg_replace(self::PLACEHOLDER, ' ', $text)), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+
+        return (int) preg_match_all("/\\p{L}[\\p{L}\\p{M}'’-]*/u", $text);
     }
 
     /**

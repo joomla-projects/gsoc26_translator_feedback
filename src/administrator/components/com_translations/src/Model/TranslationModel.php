@@ -1096,10 +1096,18 @@ class TranslationModel extends BaseDatabaseModel
             $budget->startRequest();
 
             try {
-                return $this->translateStrings($chunks[0], $sourceLanguage, $targetLanguage);
+                $translated = $this->translateStrings($chunks[0], $sourceLanguage, $targetLanguage);
             } finally {
                 $budget->endRequest();
             }
+
+            // A string that came back refused - its source text unchanged, or another string's - is
+            // absent. Saving the item would keep the source text in its place, so it is asked again.
+            if (array_diff_key($chunks[0], $translated) !== []) {
+                throw new \RuntimeException('The provider left part of the item untranslated.');
+            }
+
+            return $translated;
         }
 
         // The print is of the parts rather than of the strings: the same text cut in other places -
