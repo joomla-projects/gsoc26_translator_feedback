@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<form>
+	<fields name="params">
+		<fieldset name="task_params">
+			<field
+				name="dry_run"
+				type="radio"
+				layout="joomla.form.field.radio.switcher"
+				label="PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_DRY_RUN_LABEL"
+				description="PLG_TASK_TRANSLATIONSTRANSLATE_REASSOCIATE_DRY_RUN_DESC"
+				default="1"
+				filter="int"
+			>
+				<option value="0">JNO</option>
+				<option value="1">JYES</option>
+			</field>
+		</fieldset>
+	</fields>
+</form>

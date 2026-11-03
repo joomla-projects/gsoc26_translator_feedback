@@ -676,7 +676,7 @@ amounts of work but too slow for a whole language pack.
 
 ### Maintenance tasks
 
-Seven more task types fix things after the fact. Create them as tasks without a schedule and
+Eight more task types fix things after the fact. Create them as tasks without a schedule and
 start them with **Run Test** in the list of Scheduled Tasks:
 
 - **Retry Failed Translations** gives the translations set aside as `failed` a new set of
@@ -706,6 +706,16 @@ start them with **Run Test** in the list of Scheduled Tasks:
   menu items and texts, and menu modules (a module already made for a translated menu is kept
   and gets the pages it is missing). Nothing is translated again except the titles of copied
   menu modules. Make a backup first; running it again changes only what is no longer in line.
+- **Restore Lost Translations** finds the translations made here that are no longer associated
+  with their source, and associates them again. Joomla writes an item's associations from the
+  list in its edit form, so saving a form that was opened before a translation was made leaves
+  that translation out: it stands on its own, and the source is translated a second time once
+  it changes. A translation is found by the title it was translated with, among the items of
+  its language that have no association, and where several have that title, by its category.
+  Exactly one match is associated; none or several are reported in the task log, with the ids
+  to choose from, to associate by hand. The task starts as a dry run that only reports; switch
+  **Dry Run** off to associate. Run **Bring Earlier Translations in Line with Their Source**
+  after it, so menu items and links point at the translations found.
 
 ### Importing a set of corrections
 
