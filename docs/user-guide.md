@@ -306,6 +306,15 @@ the recorded machine translation as well, so it never counts as a correction by 
 Links in custom fields are pointed at the translation's language only when the item is
 translated. Links written as a full URL are left as they are.
 
+### A menu item and its page share their title
+
+A menu item mostly has the title of the article, category or tag it opens, and the two are
+translated apart. Whichever of them is translated second takes the title the first was
+translated with, as it stands then - a translator's correction included - and its title is not
+sent to the translation provider. A title that is part of the other one, or holds it, is sent,
+with the other's translation as a term to keep. A translated title that is still the same as
+its source is taken as left untranslated and not passed on.
+
 ### Text that is never translated
 
 What is inside `<code>`, `<kbd>`, `<samp>` and `<pre>` stays as it is in every translation: a
