@@ -383,6 +383,12 @@ term or search keyword appears in it, adds the style rules for that language, an
 those to the translation plugin. This keeps the request small and stops unrelated rules from
 confusing the result.
 
+A request carries at most 30 rules, of which at most 10 are style rules, taken by confidence.
+The other places go to the rules that matter most to the text: first those whose term is in
+the item's title - in every part of a long article, which does not hold the title itself -
+then those whose term is in the text, the more often the earlier, and last those found by a
+search keyword only. Rules that rank the same are taken by confidence.
+
 Terms are also matched in their **standard form**, so a rule written for one form of a word
 applies to its other forms as well. A rule for "article" therefore also applies where the
 text says "articles". The component works these forms out once per word and stores them, so

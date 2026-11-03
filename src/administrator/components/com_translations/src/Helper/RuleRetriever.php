@@ -62,6 +62,30 @@ class RuleRetriever
     private const MIN_KEYWORD_LENGTH = 3;
 
     /**
+     * A rule whose term is in the item's title.
+     *
+     * @var    integer
+     * @since  3.0.0
+     */
+    private const IN_TITLE = 0;
+
+    /**
+     * A rule whose term is in the text.
+     *
+     * @var    integer
+     * @since  3.0.0
+     */
+    private const IN_TEXT = 1;
+
+    /**
+     * A rule that applies only by one of its search keywords.
+     *
+     * @var    integer
+     * @since  3.0.0
+     */
+    private const BY_KEYWORD = 2;
+
+    /**
      * Retrieve the published rules relevant to an item's source strings, grouped by rule type.
      *
      * @param   DatabaseInterface    $db              The database driver.
@@ -69,6 +93,8 @@ class RuleRetriever
      * @param   array                $sourceStrings   The item's source strings, keyed by field.
      * @param   string               $sourceLanguage  The source language code.
      * @param   string               $targetLanguage  The target language code.
+     * @param   string               $title           The title of the item the strings belong to, which a
+     *                                                part of a long article does not hold; empty for none.
      *
      * @return  array  Selected rules keyed by rule type ('terminology', 'style', 'preservation').
      *
@@ -79,18 +105,21 @@ class RuleRetriever
         DispatcherInterface $dispatcher,
         array $sourceStrings,
         string $sourceLanguage,
-        string $targetLanguage
+        string $targetLanguage,
+        string $title = ''
     ): array {
         $rules = self::loadPublishedRules($db, $targetLanguage);
         $text  = self::plainText($sourceStrings);
+        $title = self::plainText([$title]);
 
         // Reducing the text only changes which rules match when a rule has a standard form to
         // match against, so a language whose rules have none is spared the work entirely.
         $standardForms = self::hasStandardForm($rules)
-            ? WordNormaliser::standardForms($db, $dispatcher, WordNormaliser::tokenise($text), $sourceLanguage)
+            ? WordNormaliser::standardForms($db, $dispatcher, WordNormaliser::tokenise($text . ' ' . $title), $sourceLanguage)
             : [];
+        $titleForms = array_intersect_key($standardForms, array_flip(WordNormaliser::tokenise($title)));
 
-        return self::selectRelevant($rules, $text, $standardForms);
+        return self::selectRelevant($rules, $text, $standardForms, $title, $titleForms);
     }
 
     /**
@@ -136,44 +165,61 @@ class RuleRetriever
     /**
      * Keep the rules that apply to the text, grouped by type and capped.
      *
-     * Style rules apply to the whole language; terminology and preservation rules apply only when
-     * their term or a search keyword appears in the text. Rules arrive ordered by confidence, so
-     * the caps keep the highest-ranked.
+     * Style rules apply to the whole language and are taken by confidence, up to their own cap.
+     * Terminology and preservation rules apply only when their term or a search keyword appears
+     * in the text, and fill the rest of the total cap by relevance: first the rules whose term is
+     * in the item's title, then those whose term is in the text, then those matched by a keyword
+     * only; within each, the rules whose term occurs more often first, and then by confidence.
+     * Taken by confidence alone, the article "Privacy Workflow" on guide.joomla.org got 20 rules,
+     * none of them for "Privacy", while its menu item got 9 that all were.
      *
      * @param   array   $rules          The candidate rules, ordered by confidence, descending.
      * @param   string  $text           The item's readable text.
      * @param   array   $standardForms  Standard form keyed by the text's words, where known.
+     * @param   string  $title          The item's readable title, empty for none.
+     * @param   array   $titleForms     Standard form keyed by the title's words, where known.
      *
      * @return  array  Selected rules keyed by rule type.
      *
      * @since   0.7.0
      */
-    public static function selectRelevant(array $rules, string $text, array $standardForms = []): array
-    {
+    public static function selectRelevant(
+        array $rules,
+        string $text,
+        array $standardForms = [],
+        string $title = '',
+        array $titleForms = []
+    ): array {
         $selected = ['terminology' => [], 'style' => [], 'preservation' => []];
-        $total    = 0;
+        $matched  = [];
 
-        foreach ($rules as $rule) {
+        foreach ($rules as $order => $rule) {
             $type = (string) ($rule['rule_type'] ?? '');
 
-            if (!isset($selected[$type]) || $total >= self::MAX_RULES) {
+            if (!isset($selected[$type])) {
                 continue;
             }
 
             if ($type === 'style') {
-                if (\count($selected['style']) >= self::MAX_STYLE_RULES) {
-                    continue;
+                if (\count($selected['style']) < self::MAX_STYLE_RULES) {
+                    $selected['style'][] = self::forPrompt($rule);
                 }
-            } elseif (!self::appliesToText($rule, $text, $standardForms)) {
+
                 continue;
             }
 
-            $selected[$type][] = [
-                'source_term' => (string) ($rule['source_term'] ?? ''),
-                'target_term' => (string) ($rule['target_term'] ?? ''),
-                'rule_text'   => (string) ($rule['rule_text'] ?? ''),
-            ];
-            $total++;
+            $relevance = self::relevance($rule, $text, $standardForms, $title, $titleForms);
+
+            if ($relevance !== null) {
+                $matched[] = [$relevance, -self::occurrences($rule, $text, $standardForms), $order, $rule];
+            }
+        }
+
+        // Ranked by relevance, then by how often the term occurs, then in the order of confidence.
+        usort($matched, static fn (array $one, array $other): int => \array_slice($one, 0, 3) <=> \array_slice($other, 0, 3));
+
+        foreach (\array_slice($matched, 0, max(0, self::MAX_RULES - \count($selected['style']))) as $match) {
+            $selected[(string) $match[3]['rule_type']][] = self::forPrompt($match[3]);
         }
 
         return $selected;
@@ -196,21 +242,86 @@ class RuleRetriever
      */
     public static function appliesToText(array $rule, string $text, array $standardForms = []): bool
     {
-        if (self::matchesStandardForm($rule, $standardForms)) {
-            return true;
+        return self::relevance($rule, $text, $standardForms) !== null;
+    }
+
+    /**
+     * How a terminology or preservation rule applies: its term in the title, its term in the
+     * text, or a keyword only; null when it does not apply.
+     *
+     * A part of a long article does not hold the title, so a rule for a term in the title counts
+     * for every part, whether its term is in that part or not.
+     *
+     * @param   array   $rule           The rule row.
+     * @param   string  $text           The item's readable text.
+     * @param   array   $standardForms  Standard form keyed by the text's words, where known.
+     * @param   string  $title          The item's readable title, empty for none.
+     * @param   array   $titleForms     Standard form keyed by the title's words, where known.
+     *
+     * @return  integer|null  IN_TITLE, IN_TEXT or BY_KEYWORD.
+     *
+     * @since   3.0.0
+     */
+    private static function relevance(array $rule, string $text, array $standardForms, string $title = '', array $titleForms = []): ?int
+    {
+        $term = (string) ($rule['source_term'] ?? '');
+
+        if ($title !== '' && (self::matchesStandardForm($rule, $titleForms) || self::containsWord($title, $term))) {
+            return self::IN_TITLE;
         }
 
-        if (self::containsWord($text, (string) ($rule['source_term'] ?? ''))) {
-            return true;
+        if (self::matchesStandardForm($rule, $standardForms) || self::containsWord($text, $term)) {
+            return self::IN_TEXT;
         }
 
         foreach (preg_split('/[\s,;]+/u', (string) ($rule['search_keywords'] ?? '')) ?: [] as $keyword) {
             if (mb_strlen($keyword) >= self::MIN_KEYWORD_LENGTH && self::containsWord($text, $keyword)) {
-                return true;
+                return self::BY_KEYWORD;
             }
         }
 
-        return false;
+        return null;
+    }
+
+    /**
+     * How often a rule's term occurs in the text: as a whole word, or the number of the text's
+     * word forms that reduce to it, whichever is more.
+     *
+     * @param   array   $rule           The rule row.
+     * @param   string  $text           The item's readable text.
+     * @param   array   $standardForms  Standard form keyed by the text's words, where known.
+     *
+     * @return  integer
+     *
+     * @since   3.0.0
+     */
+    private static function occurrences(array $rule, string $text, array $standardForms): int
+    {
+        $term = trim((string) preg_replace('/\s+/u', ' ', (string) ($rule['source_term'] ?? '')));
+        $seen = $term === '' ? 0 : (int) preg_match_all('/(?<![\p{L}\p{N}])' . preg_quote($term, '/') . '(?![\p{L}\p{N}])/iu', $text);
+
+        $standard = (string) ($rule['source_term_standard'] ?? '');
+        $forms    = $standard === '' ? 0 : \count(array_keys($standardForms, $standard, true));
+
+        return max($seen, $forms);
+    }
+
+    /**
+     * The fields of a rule a provider is given.
+     *
+     * @param   array  $rule  The rule row.
+     *
+     * @return  array{source_term: string, target_term: string, rule_text: string}
+     *
+     * @since   3.0.0
+     */
+    private static function forPrompt(array $rule): array
+    {
+        return [
+            'source_term' => (string) ($rule['source_term'] ?? ''),
+            'target_term' => (string) ($rule['target_term'] ?? ''),
+            'rule_text'   => (string) ($rule['rule_text'] ?? ''),
+        ];
     }
 
     /**

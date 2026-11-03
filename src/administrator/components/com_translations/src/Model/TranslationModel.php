@@ -108,12 +108,13 @@ class TranslationModel extends BaseDatabaseModel
     private const MENU_ITEM = 'com_menus.item';
 
     /**
-     * The item being translated, for the request log: its content type and id.
+     * The item being translated: its content type and id, for the request log, and its title,
+     * whose terms rank first among the rules of every request for it.
      *
-     * @var    array{0: string, 1: int}
+     * @var    array{0: string, 1: int, 2: string}
      * @since  3.0.0
      */
-    private array $translating = ['', 0];
+    private array $translating = ['', 0, ''];
 
     /**
      * Translate a source item into one target language.
@@ -189,7 +190,7 @@ class TranslationModel extends BaseDatabaseModel
         );
         $fixed = $known['title'] !== null ? [self::TITLE => $known['title']] : [];
 
-        $this->translating = [$contentType, $sourceItemId];
+        $this->translating = [$contentType, $sourceItemId, (string) ($strings[self::TITLE] ?? '')];
 
         $stateId    = $this->getOrCreateStateId($sourceItemId, $contentType, $targetLanguage);
         $translated = $this->translateInChunks(
@@ -1070,7 +1071,8 @@ class TranslationModel extends BaseDatabaseModel
             $dispatcher,
             $strings,
             $sourceLanguage,
-            $targetLanguage
+            $targetLanguage,
+            $this->translating[2]
         );
 
         $started = microtime(true);
