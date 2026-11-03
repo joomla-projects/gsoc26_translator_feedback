@@ -509,7 +509,9 @@ The component therefore translates a long article in parts, and carries on by it
   run got through.
 - So the parts read as one article, each request is told what the article is about - its title
   and the headings of its sections - and which terms the earlier parts were already translated
-  with, so a word is not translated one way in one section and another way in the next.
+  with, so a word is not translated one way in one section and another way in the next. The
+  title and the headings are given in their translation once a part holding them is translated,
+  and the provider is told that those still in the source language are not names to keep.
 
 **Characters per Request** is the one setting worth tuning. The provider's reply grows with
 it, so it decides how long a single request takes:

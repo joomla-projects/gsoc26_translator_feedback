@@ -93,7 +93,10 @@ final class Claude extends CMSPlugin implements SubscriberInterface
         . ' middle of a sentence, a list or a section. Translate it as the fragment it is: do not open, close'
         . ' or add any HTML tag that is not already there, do not complete an unfinished sentence, and do not'
         . ' add anything to introduce or round off the part. Keep the terminology and the register of the rest'
-        . ' of the document. The JSON object you return holds one further key besides the numbers, "glossary",'
+        . ' of the document. The title and outline of the document are given only so you know what it is about,'
+        . ' in the target language where earlier parts were translated already; a title or heading still in the'
+        . ' source language is not a name to keep: wherever it occurs in your texts, translate it like any other'
+        . ' text. The JSON object you return holds one further key besides the numbers, "glossary",'
         . ' listing the terms you chose for this part that the rest of the document should be translated with:'
         . ' the domain-specific and recurring terms only, each as a "source" and a "target", and no ordinary'
         . ' words.';

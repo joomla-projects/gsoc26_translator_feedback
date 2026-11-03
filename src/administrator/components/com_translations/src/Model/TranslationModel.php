@@ -1157,7 +1157,6 @@ class TranslationModel extends BaseDatabaseModel
         // tried. Dropping it here puts it back among the parts still to translate.
         $parts    = StringTranslator::ofTheirSources(array_merge(...array_values($chunks)), $stored['parts']);
         $glossary = array_merge($terms, $stored['glossary'], $terms);
-        $context  = TextChunker::documentContext($strings);
         $sent     = false;
 
         foreach ($chunks as $chunk) {
@@ -1173,6 +1172,18 @@ class TranslationModel extends BaseDatabaseModel
             if ($sent && !$budget->allowsAnother()) {
                 return null;
             }
+
+            // The title and the headings translated so far are given as translated, so the ones the
+            // provider sees in the source language are only those it has not come to yet.
+            $inTarget = TextChunker::headingTranslations(array_merge(...array_values($chunks)), $parts);
+            $title    = trim((string) ($strings[self::TITLE] ?? ''));
+            $ofTitle  = trim((string) ($fixed[self::TITLE] ?? $parts[self::TITLE] ?? ''));
+
+            if ($title !== '' && $ofTitle !== '') {
+                $inTarget[$title] = $ofTitle;
+            }
+
+            $context = TextChunker::documentContext($strings, $inTarget);
 
             $budget->startRequest();
 

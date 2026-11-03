@@ -381,6 +381,56 @@ final class TextChunkerTest extends TestCase
     }
 
     /**
+     * The title and the headings translated already are given in their translation.
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testTheContextGivesWhatIsTranslatedAlreadyInTheTargetLanguage(): void
+    {
+        $context = TextChunker::documentContext(
+            [
+                'title'    => 'Security HTTP Headers',
+                'fulltext' => '<h2>What are HTTP headers?</h2><p>Text.</p><h3>Referrer-Policy</h3><p>More.</p>',
+            ],
+            ['Security HTTP Headers' => 'HTTP-beveiligingsheaders', 'What are HTTP headers?' => 'Wat zijn HTTP-headers?']
+        );
+
+        $this->assertStringContainsString('Title: HTTP-beveiligingsheaders', $context);
+        $this->assertStringContainsString('- Wat zijn HTTP-headers?', $context);
+        $this->assertStringContainsString('- Referrer-Policy', $context);
+    }
+
+    /**
+     * Headings are paired part by part, in order; a part with another number of headings, and a
+     * heading sent back as it was, give no pair.
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testHeadingTranslationsArePairedPartByPart(): void
+    {
+        $source = [
+            'fulltext#1' => '<h2>What are HTTP headers?</h2><p>Text.</p><h3>Referrer-Policy</h3>',
+            'fulltext#2' => '<h2>Content &amp; Security</h2><p>More.</p>',
+            'fulltext#3' => '<h2>Strict Transport</h2><h2>Frames</h2>',
+            'fulltext#4' => '<h2>Not yet</h2>',
+        ];
+        $translated = [
+            'fulltext#1' => '<h2>Wat zijn HTTP-headers?</h2><p>Tekst.</p><h3>Referrer-Policy</h3>',
+            'fulltext#2' => '<h2>Inhoud &amp; <em>beveiliging</em></h2><p>Meer.</p>',
+            'fulltext#3' => '<h2>Strikt transport en frames</h2>',
+        ];
+
+        $this->assertSame(
+            ['What are HTTP headers?' => 'Wat zijn HTTP-headers?', 'Content & Security' => 'Inhoud & beveiliging'],
+            TextChunker::headingTranslations($source, $translated)
+        );
+    }
+
+    /**
      * An item with nothing to say about itself sends no context rather than an empty heading.
      *
      * @return  void
