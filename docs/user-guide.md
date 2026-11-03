@@ -249,6 +249,22 @@ translation would be refused over it.
 Changing an alias by hand afterwards is fine, but translating the item again builds it from the
 title once more, as saving an item in Joomla with the alias field emptied does.
 
+### Links in a translation
+
+A link from one page of the site to another, as the editor's Menu and Article buttons write it
+(`index.php?Itemid=123`, `index.php?option=com_content&view=article&id=45`), opens a page in the
+source language. In a translation it is pointed at the same page in the translation's language:
+the translated menu item, article, category or tag. The `#anchor` stays, and a `lang` in the link
+is set to the language. A menu item no one associated with its original is found too, through the
+translation of the article it opens, and a link to an alias menu item follows the alias to the
+menu item it stands for.
+
+A link to a page that has no translation yet keeps pointing at the original. It is pointed at the
+translation as soon as that is made, in every translation that links to it. The link changes in
+the recorded machine translation as well, so it never counts as a correction by the translator.
+Links in custom fields are pointed at the translation's language only when the item is
+translated. Links written as a full URL are left as they are.
+
 ### Text that is never translated
 
 What is inside `<code>`, `<kbd>`, `<samp>` and `<pre>` stays as it is in every translation: a

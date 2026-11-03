@@ -36,6 +36,9 @@ use Joomla\Component\Translations\Administrator\Helper\StringTranslator;
 use Joomla\Component\Translations\Administrator\Helper\TextChunker;
 use Joomla\Component\Translations\Administrator\Helper\TimeBudget;
 use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
+use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
+use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
+use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
 use Joomla\Database\ParameterType;
 use Joomla\Database\QueryInterface;
 use Joomla\Filesystem\Folder;
@@ -1386,6 +1389,15 @@ class TranslationModel extends BaseDatabaseModel
         $translatableFields = (array) ($properties['translatableFields'] ?? []);
         $fields             = $this->packTranslatedFields($sourceItem, $translatableFields, $translated);
 
+        // The internal links in the text open the source language's pages; point them at this language's.
+        $links = new LinkTranslator(new DatabaseLinkLookup($this->getDatabase()));
+
+        foreach ($fields as $field => $value) {
+            if (\is_string($value)) {
+                $fields[$field] = $links->translateHtml($value, $targetLanguage);
+            }
+        }
+
         $draft = array_merge($fields, [
             'id'       => 0,
             'language' => $targetLanguage,
@@ -1397,7 +1409,10 @@ class TranslationModel extends BaseDatabaseModel
 
         foreach ($customFields as $name => $customField) {
             $draftCustomFields[$name] = $customField['translatable']
-                ? ($translated[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] ?? $customField['value'])
+                ? $links->translateHtml(
+                    (string) ($translated[TranslatableValuesHelper::CUSTOM_FIELD_PREFIX . $name] ?? $customField['value']),
+                    $targetLanguage
+                )
                 : $customField['value'];
         }
 
@@ -1573,8 +1588,10 @@ class TranslationModel extends BaseDatabaseModel
         }
 
         // Translations made before this one could only point at its source, and wait for it: a menu
-        // item linking to this article, or a menu item whose parent this is. Now they can point here.
+        // item linking to this article, a text linking to its page, or a menu item whose parent this
+        // is. Now they can point here.
         $this->repointEarlierLinks($contentType, (int) $sourceItem['id'], $targetLanguage);
+        (new TranslatedTexts($this->getDatabase()))->repointLinksTo($contentType, (int) $sourceItem['id'], $targetLanguage);
         $this->nestEarlierChildren($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties);
 
         // A new translation takes its source's place among its siblings; one translated before keeps
