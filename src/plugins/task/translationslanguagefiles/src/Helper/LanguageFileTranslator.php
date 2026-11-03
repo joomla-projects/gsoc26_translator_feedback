@@ -81,10 +81,13 @@ final class LanguageFileTranslator
     /**
      * Matches a printf conversion, including the positional form and a literal percent sign.
      *
+     * The space flag is left out: the language strings use none, and with it a percentage in the
+     * text, as in "75% of", reads as the conversion "% o".
+     *
      * @var    string
      * @since  1.0.0
      */
-    private const PLACEHOLDER = '/%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?[bcdeEfFgGosuxX%]/';
+    private const PLACEHOLDER = '/%(?:\d+\$)?[-+0#]*\d*(?:\.\d+)?[bcdeEfFgGosuxX%]/';
 
     /**
      * Matches the name of an HTML tag, opening or closing.
