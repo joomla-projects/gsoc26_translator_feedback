@@ -111,6 +111,7 @@ final class LanguageFilesTest extends TestCase
             'positional placeholders'  => ['%1$d of %2$s', '%2$s: %1$d'],
             'a tag around other words' => ['<strong>Careful</strong> now', 'Nu <strong>voorzichtig</strong>'],
             'a literal percent sign'   => ['100%% done', '100%% klaar'],
+            'a percentage in the text' => ['Used by 75% of the sites', 'Gebruikt door 75% van de sites'],
         ];
     }
 

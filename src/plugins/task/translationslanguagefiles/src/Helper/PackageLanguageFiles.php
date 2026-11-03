@@ -16,13 +16,12 @@ namespace Joomla\Plugin\Task\TranslationsLanguageFiles\Helper;
 
 use Joomla\CMS\Language\LanguageHelper;
 use Joomla\Database\DatabaseInterface;
-use Joomla\Database\ParameterType;
 
 /**
  * Finds the language files of Translator Feedback as this site installed them.
  *
- * The package is the source of truth for what its extensions are: every extension installed as
- * part of pkg_translations, the package itself, and the seed task, which is a download of its own
+ * The package is the source of truth for what its extensions are: every extension its installed
+ * manifest lists, the package itself, and the seed task, which is a download of its own
  * but lives in the same repository. Each file is described both where it is read on this site and
  * where its translation belongs in the repository's src folder, with the manifest that has to
  * name it, so the files that come out of this plugin can be put straight into the package.
@@ -48,12 +47,12 @@ final class PackageLanguageFiles
     public const SOURCE_LANGUAGE = 'en-GB';
 
     /**
-     * The plugins released on their own from the same repository, as group and element.
+     * The plugins released on their own from the same repository, as type, group and element.
      *
      * @var    string[][]
      * @since  1.0.0
      */
-    private const SEPARATE_DOWNLOADS = [['task', 'translationsseed']];
+    private const SEPARATE_DOWNLOADS = [['plugin', 'task', 'translationsseed']];
 
     /**
      * Every language file of the package that this site has in the source language.
@@ -104,6 +103,11 @@ final class PackageLanguageFiles
     /**
      * The package, its extensions and the separately released ones, as installed.
      *
+     * The extensions are the ones the package's installed manifest lists, not the ones whose
+     * package_id points at the package: a site can have other extensions carrying that id, for
+     * instance when the id of an uninstalled package was given out again, and their strings are
+     * not this package's to translate.
+     *
      * @param   DatabaseInterface  $db  The site's database.
      *
      * @return  array  One row per extension with its type, element, folder and version.
@@ -112,46 +116,79 @@ final class PackageLanguageFiles
      */
     private static function extensions(DatabaseInterface $db): array
     {
-        $package = self::PACKAGE;
-        $type    = 'package';
-        $query   = $db->getQuery(true)
-            ->select($db->quoteName('extension_id'))
-            ->from($db->quoteName('#__extensions'))
-            ->where($db->quoteName('element') . ' = :element')
-            ->where($db->quoteName('type') . ' = :type')
-            ->bind(':element', $package)
-            ->bind(':type', $type);
-        $packageId = (int) $db->setQuery($query)->loadResult();
+        $package = self::installed($db, 'package', '', self::PACKAGE);
 
-        if ($packageId === 0) {
+        if ($package === null) {
             return [];
         }
 
-        $query = $db->getQuery(true)
-            ->select($db->quoteName(['type', 'element', 'folder', 'manifest_cache']))
-            ->from($db->quoteName('#__extensions'))
-            ->where(
-                '(' . $db->quoteName('extension_id') . ' = :package OR ' . $db->quoteName('package_id') . ' = :package2)'
-            )
-            ->bind(':package', $packageId, ParameterType::INTEGER)
-            ->bind(':package2', $packageId, ParameterType::INTEGER);
-        $rows = $db->setQuery($query)->loadAssocList() ?: [];
+        $rows = [$package];
 
-        foreach (self::SEPARATE_DOWNLOADS as [$folder, $element]) {
-            $plugin = 'plugin';
-            $query  = $db->getQuery(true)
-                ->select($db->quoteName(['type', 'element', 'folder', 'manifest_cache']))
-                ->from($db->quoteName('#__extensions'))
-                ->where($db->quoteName('type') . ' = :type')
-                ->where($db->quoteName('folder') . ' = :folder')
-                ->where($db->quoteName('element') . ' = :element')
-                ->bind(':type', $plugin)
-                ->bind(':folder', $folder)
-                ->bind(':element', $element);
-            $rows = array_merge($rows, $db->setQuery($query)->loadAssocList() ?: []);
+        foreach (array_merge(self::members(), self::SEPARATE_DOWNLOADS) as [$type, $folder, $element]) {
+            $row = self::installed($db, $type, $folder, $element);
+
+            if ($row !== null) {
+                $rows[] = $row;
+            }
         }
 
         return $rows;
+    }
+
+    /**
+     * The extensions the package's installed manifest lists.
+     *
+     * @return  string[][]  The type, folder and element of each, the folder empty for all but plugins.
+     *
+     * @since   1.1.1
+     */
+    private static function members(): array
+    {
+        $path     = JPATH_MANIFESTS . '/packages/' . self::PACKAGE . '.xml';
+        $manifest = is_file($path) ? simplexml_load_file($path) : false;
+
+        if ($manifest === false || !isset($manifest->files->file)) {
+            return [];
+        }
+
+        $members = [];
+
+        foreach ($manifest->files->file as $file) {
+            $type      = (string) $file['type'];
+            $members[] = [$type, $type === 'plugin' ? (string) $file['group'] : '', (string) $file['id']];
+        }
+
+        return $members;
+    }
+
+    /**
+     * One extension as this site has it installed.
+     *
+     * @param   DatabaseInterface  $db       The site's database.
+     * @param   string             $type     The extension type.
+     * @param   string             $folder   The plugin group, empty for other types.
+     * @param   string             $element  The element it is stored under.
+     *
+     * @return  array|null  The row with its type, element, folder and manifest cache, or null when it is not installed.
+     *
+     * @since   1.1.1
+     */
+    private static function installed(DatabaseInterface $db, string $type, string $folder, string $element): ?array
+    {
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['type', 'element', 'folder', 'manifest_cache']))
+            ->from($db->quoteName('#__extensions'))
+            ->where($db->quoteName('type') . ' = :type')
+            ->where($db->quoteName('element') . ' = :element')
+            ->bind(':type', $type)
+            ->bind(':element', $element);
+
+        if ($type === 'plugin') {
+            $query->where($db->quoteName('folder') . ' = :folder')
+                ->bind(':folder', $folder);
+        }
+
+        return $db->setQuery($query)->loadAssoc() ?: null;
     }
 
     /**
