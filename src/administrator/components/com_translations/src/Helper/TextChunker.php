@@ -325,28 +325,71 @@ final class TextChunker
      * nothing extra to produce: it only repeats them, so a request that holds the middle of an
      * article still knows what the article is about and where its chunk sits.
      *
-     * @param   array  $strings  The item's source strings keyed by field.
+     * Given in the source language, the title and the headings were taken for names: in articles
+     * sent in parts on guide.joomla.org the title stayed English in 10% of them, five times as
+     * often as in articles sent whole. So each one is given in its translation as soon as a part
+     * that holds it has been translated.
+     *
+     * @param   array                  $strings       The item's source strings keyed by field.
+     * @param   array<string, string>  $translations  The translation of each title or heading translated already, by its source.
      *
      * @return  string  The context, empty when the strings say nothing useful.
      *
      * @since   1.4.0
      */
-    public static function documentContext(array $strings): string
+    public static function documentContext(array $strings, array $translations = []): string
     {
         $lines = [];
         $title = trim((string) ($strings['title'] ?? ''));
+        $as    = static fn(string $text): string => $translations[$text] ?? $text;
 
         if ($title !== '') {
-            $lines[] = 'Title: ' . $title;
+            $lines[] = 'Title: ' . $as($title);
         }
 
         $headings = self::headings($strings);
 
         if ($headings !== []) {
-            $lines[] = "Outline:\n" . implode("\n", array_map(static fn(string $h): string => '- ' . $h, $headings));
+            $lines[] = "Outline:\n" . implode("\n", array_map(static fn(string $h): string => '- ' . $as($h), $headings));
         }
 
         return implode("\n\n", $lines);
+    }
+
+    /**
+     * The translation of each heading in the parts translated so far, by its source.
+     *
+     * The headings of a part and of its translation are paired in the order they appear. A part
+     * whose translation has another number of headings is left out, as the pairs cannot be told,
+     * and so is a heading that came back as it was sent.
+     *
+     * @param   array<string, string>  $sourceParts      The source parts keyed by part key.
+     * @param   array<string, string>  $translatedParts  The translated parts keyed by part key.
+     *
+     * @return  array<string, string>
+     *
+     * @since   3.0.0
+     */
+    public static function headingTranslations(array $sourceParts, array $translatedParts): array
+    {
+        $pairs = [];
+
+        foreach (array_intersect_key($sourceParts, $translatedParts) as $partKey => $text) {
+            $sources      = self::headingsIn((string) $text);
+            $translations = self::headingsIn((string) $translatedParts[$partKey]);
+
+            if (\count($sources) !== \count($translations)) {
+                continue;
+            }
+
+            foreach ($sources as $index => $source) {
+                if ($translations[$index] !== $source) {
+                    $pairs[$source] ??= $translations[$index];
+                }
+            }
+        }
+
+        return $pairs;
     }
 
     /**
@@ -383,18 +426,38 @@ final class TextChunker
         $headings = [];
 
         foreach ($strings as $text) {
-            preg_match_all('#<h[1-6][^>]*>(.*?)</h[1-6]>#is', (string) $text, $matches);
-
-            foreach ($matches[1] as $heading) {
-                $heading = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($heading), \ENT_QUOTES | \ENT_HTML5, 'UTF-8')) ?? '');
-
-                if ($heading !== '') {
-                    $headings[] = $heading;
-                }
+            foreach (self::headingsIn((string) $text) as $heading) {
+                $headings[] = $heading;
 
                 if (\count($headings) === self::MAX_OUTLINE_HEADINGS) {
                     return $headings;
                 }
+            }
+        }
+
+        return $headings;
+    }
+
+    /**
+     * The headings in one text, as plain text and in the order they appear.
+     *
+     * @param   string  $text  The text.
+     *
+     * @return  string[]
+     *
+     * @since   3.0.0
+     */
+    private static function headingsIn(string $text): array
+    {
+        preg_match_all('#<h[1-6][^>]*>(.*?)</h[1-6]>#is', $text, $matches);
+
+        $headings = [];
+
+        foreach ($matches[1] as $heading) {
+            $heading = trim(preg_replace('/\s+/u', ' ', html_entity_decode(strip_tags($heading), \ENT_QUOTES | \ENT_HTML5, 'UTF-8')) ?? '');
+
+            if ($heading !== '') {
+                $headings[] = $heading;
             }
         }
 
