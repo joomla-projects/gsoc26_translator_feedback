@@ -294,4 +294,70 @@ final class RuleRetrieverTest extends TestCase
         $this->assertSame('style 1', $selected['style'][0]['rule_text']);
         $this->assertSame('term 1', $selected['terminology'][0]['target_term']);
     }
+
+    /**
+     * The places go to the rules for the title first, then to terms in the text, then to keywords;
+     * within a rank to the term that occurs most, then by confidence.
+     *
+     * The article "Privacy Workflow" got 20 rules by confidence, none of them for "Privacy".
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testRulesAreRankedByRelevanceTitleFirst(): void
+    {
+        $rules = [];
+
+        // 30 high-confidence rules matched only by a keyword.
+        for ($i = 1; $i <= 30; $i++) {
+            $rules[] = ['rule_type' => 'terminology', 'source_term' => 'unrelated ' . $i, 'target_term' => 'keyword ' . $i, 'search_keywords' => 'request'];
+        }
+
+        $rules[] = ['rule_type' => 'terminology', 'source_term' => 'consent', 'target_term' => 'toestemming'];
+        $rules[] = ['rule_type' => 'terminology', 'source_term' => 'request', 'target_term' => 'verzoek'];
+        $rules[] = ['rule_type' => 'preservation', 'source_term' => 'Workflow', 'rule_text' => 'Keep Workflow'];
+        $rules[] = ['rule_type' => 'terminology', 'source_term' => 'privacy', 'target_term' => 'privacy-instellingen'];
+        $rules[] = ['rule_type' => 'style', 'rule_text' => 'Be brief'];
+
+        $selected = RuleRetriever::selectRelevant(
+            $rules,
+            'A request asks for consent. Each request is logged, and the request is answered.',
+            [],
+            'Privacy Workflow'
+        );
+
+        $this->assertCount(1, $selected['style']);
+        $this->assertSame(
+            ['privacy-instellingen', 'verzoek', 'toestemming', 'keyword 1'],
+            \array_slice(array_column($selected['terminology'], 'target_term'), 0, 4),
+            'Title term first, then the term met three times, then once, then keyword matches by confidence'
+        );
+        $this->assertSame('Keep Workflow', $selected['preservation'][0]['rule_text'], 'A title term in a part without the title still counts');
+        $this->assertCount(29, array_merge($selected['terminology'], $selected['preservation']), 'The total cap leaves 29 places beside the style rule');
+        $this->assertNotContains('keyword 27', array_column($selected['terminology'], 'target_term'), 'Keyword matches are the ones left out');
+    }
+
+    /**
+     * A term in its standard form counts in the title through the title's word forms.
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testATermInTheTitleIsFoundByItsStandardForm(): void
+    {
+        $selected = RuleRetriever::selectRelevant(
+            [
+                ['rule_type' => 'terminology', 'source_term' => 'menu', 'target_term' => 'menu'],
+                ['rule_type' => 'terminology', 'source_term' => 'article', 'source_term_standard' => 'article', 'target_term' => 'artikel'],
+            ],
+            'The menu shows the menu.',
+            ['menu' => 'menu', 'articles' => 'article'],
+            'Articles',
+            ['articles' => 'article']
+        );
+
+        $this->assertSame(['artikel', 'menu'], array_column($selected['terminology'], 'target_term'));
+    }
 }
