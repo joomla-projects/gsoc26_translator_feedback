@@ -27,6 +27,7 @@ use Joomla\Component\Fields\Administrator\Model\FieldModel;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\DatabaseConnection;
 use Joomla\Component\Translations\Administrator\Helper\DraftAlias;
+use Joomla\Component\Translations\Administrator\Helper\LanguageShare;
 use Joomla\Component\Translations\Administrator\Helper\RuleRetriever;
 use Joomla\Component\Translations\Administrator\Helper\RunLock;
 use Joomla\Component\Translations\Administrator\Helper\RunResult;
@@ -505,6 +506,8 @@ class TranslationModel extends BaseDatabaseModel
      * Each content type is queried on its own, because each has its own table and publish-state
      * column, and the walk stops as soon as the batch is full. Types are walked in dependency
      * order, so an item's related items are translated before the item that points at them.
+     * Within a type the target languages take turns (see LanguageShare), so one language does not
+     * fill the batch while the others wait.
      *
      * @param   integer  $batchSize  The most items to collect.
      *
@@ -521,32 +524,56 @@ class TranslationModel extends BaseDatabaseModel
             return [];
         }
 
-        $work = [];
+        $targetLanguages = LanguageShare::leastRecentFirst($targetLanguages, $this->lastAttempts());
+        $work            = [];
 
         foreach (ContentTypesHelper::getContentTypesInDependencyOrder() as $contentType) {
+            $remaining = $batchSize - \count($work);
+
+            if ($remaining < 1) {
+                break;
+            }
+
             $properties = ContentTypesHelper::getProperties($contentType);
+            $waiting    = [];
 
             foreach ($targetLanguages as $targetLanguage) {
-                $remaining = $batchSize - \count($work);
+                $waiting[$targetLanguage] = $this->untranslatedItems($contentType, $properties, $sourceLanguage, $targetLanguage, $remaining);
+            }
 
-                if ($remaining < 1) {
-                    return $work;
-                }
-
-                $untranslated = $this->untranslatedItems($contentType, $properties, $sourceLanguage, $targetLanguage, $remaining);
-
-                foreach ($untranslated as $item) {
-                    $work[] = [
-                        'contentType'    => $contentType,
-                        'sourceItemId'   => (int) $item->id,
-                        'targetLanguage' => $targetLanguage,
-                        'stateId'        => $item->stateId === null ? null : (int) $item->stateId,
-                    ];
-                }
+            foreach (LanguageShare::interleave($waiting, $remaining) as [$targetLanguage, $item]) {
+                $work[] = [
+                    'contentType'    => $contentType,
+                    'sourceItemId'   => (int) $item->id,
+                    'targetLanguage' => $targetLanguage,
+                    'stateId'        => $item->stateId === null ? null : (int) $item->stateId,
+                ];
             }
         }
 
         return $work;
+    }
+
+    /**
+     * When an item was last attempted in each target language, as far as the queue states tell.
+     *
+     * A state row is touched whenever an attempt is counted, so its latest modification is the
+     * latest attempt in that language, give or take a translator's review.
+     *
+     * @return  array<string, string>  The latest modification per language code.
+     *
+     * @since   1.6.1
+     */
+    private function lastAttempts(): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select([$db->quoteName('target_language'), 'MAX(' . $db->quoteName('modified') . ') AS ' . $db->quoteName('lastAttempt')])
+            ->from($db->quoteName('#__translations_queue_states'))
+            ->group($db->quoteName('target_language'));
+        $db->setQuery($query);
+
+        return array_map('strval', $db->loadAssocList('target_language', 'lastAttempt') ?: []);
     }
 
     /**
