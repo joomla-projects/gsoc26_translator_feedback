@@ -33,6 +33,11 @@ use Joomla\CMS\Plugin\CMSPlugin;
 use Joomla\CMS\Table\ContentHistory;
 use Joomla\Component\Translations\Administrator\Helper\ContentTypesHelper;
 use Joomla\Component\Translations\Administrator\Helper\SourceState;
+use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
+use Joomla\Component\Translations\Administrator\Link\HtmlLinks;
+use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
+use Joomla\Component\Translations\Administrator\Link\SourceChange;
+use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
 use Joomla\Database\DatabaseAwareInterface;
 use Joomla\Database\DatabaseAwareTrait;
 use Joomla\Database\ParameterType;
@@ -379,6 +384,7 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
 
         // Never let a failure here break the save this is running inside.
         try {
+            $this->keepTranslationsOfUnchangedText($queueId, $contentType, $sourceId, (int) $table->version_id);
             $this->invalidateTranslations($queueId, (int) $table->version_id);
         } catch (\Throwable $e) {
             Log::add(
@@ -1020,6 +1026,158 @@ final class Translations extends CMSPlugin implements SubscriberInterface, Datab
             ->bind(':language', $language, ParameterType::STRING);
         $db->setQuery($query);
         $db->execute();
+    }
+
+    /**
+     * Keep the translations whose text the version just stored does not change.
+     *
+     * Joomla stores a version whenever a source is saved with any change, such as its state or the
+     * target of a link. Only a change in the text to translate, or in what a translation copies from
+     * its source, makes a translation out of date.
+     * Each translation is compared against the version it was made from. Where nothing to translate
+     * changed, it records the new version, so invalidateTranslations() passes it by. Where only the
+     * targets of links changed, its own links to those targets are pointed at the new ones first,
+     * in the translation's language. A translation whose version is no longer stored cannot be
+     * compared, so it is left to go back to pending.
+     *
+     * @param   integer  $queueId      The source item's queue row id.
+     * @param   string   $contentType  The content type key.
+     * @param   integer  $sourceId     The source item id.
+     * @param   integer  $versionId    The version just stored for the source.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function keepTranslationsOfUnchangedText(int $queueId, string $contentType, int $sourceId, int $versionId): void
+    {
+        $translatedStates = ['review', 'approved', 'published'];
+        $noVersion        = 0;
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['id', 'target_language', 'source_version_id']))
+            ->from($db->quoteName('#__translations_queue_states'))
+            ->where($db->quoteName('queue_id') . ' = :queueId')
+            ->whereIn($db->quoteName('translation_state'), $translatedStates, ParameterType::STRING)
+            ->where($db->quoteName('source_version_id') . ' > :noVersion')
+            ->where($db->quoteName('source_version_id') . ' < :versionId')
+            ->bind(':queueId', $queueId, ParameterType::INTEGER)
+            ->bind(':noVersion', $noVersion, ParameterType::INTEGER)
+            ->bind(':versionId', $versionId, ParameterType::INTEGER);
+        $cells = $db->setQuery($query)->loadObjectList();
+        $new   = $cells === [] ? null : $this->versionData($versionId);
+
+        if ($new === null) {
+            return;
+        }
+
+        $properties         = ContentTypesHelper::getProperties($contentType);
+        $translatableFields = (array) ($properties['translatableFields'] ?? []);
+        $copiedFields       = array_values(array_unique(array_merge(
+            (array) ($properties['draftCopyFields'] ?? []),
+            array_keys((array) ($properties['associatedFields'] ?? [])),
+            array_keys((array) ($properties['m2m_relation'] ?? []))
+        )));
+        $lookup             = new DatabaseLinkLookup($db);
+        $translator         = new LinkTranslator($lookup);
+        $texts              = new TranslatedTexts($db);
+        $changes            = [];
+
+        foreach ($cells as $cell) {
+            $oldVersionId = (int) $cell->source_version_id;
+
+            if (!isset($changes[$oldVersionId])) {
+                $old                    = $this->versionData($oldVersionId);
+                $changes[$oldVersionId] = $old === null
+                    ? ['change' => SourceChange::TEXT, 'links' => []]
+                    : SourceChange::between($old, $new, $translatableFields, $copiedFields);
+            }
+
+            $change   = $changes[$oldVersionId];
+            $language = (string) $cell->target_language;
+
+            if ($change['change'] === SourceChange::TEXT) {
+                continue;
+            }
+
+            if ($change['change'] === SourceChange::LINKS) {
+                $translationId = $lookup->translation($contentType, $sourceId, $language);
+
+                if ($translationId === null) {
+                    continue;
+                }
+
+                $texts->rewrite(
+                    $contentType,
+                    $translationId,
+                    $language,
+                    static fn (string $html): string => HtmlLinks::rewrite(
+                        $html,
+                        static fn (string $href): ?string => self::followLink($href, $change['links'], $translator, $language)
+                    )
+                );
+            }
+
+            $cellId = (int) $cell->id;
+            $update = $db->getQuery(true)
+                ->update($db->quoteName('#__translations_queue_states'))
+                ->set($db->quoteName('source_version_id') . ' = :versionId')
+                ->where($db->quoteName('id') . ' = :cellId')
+                ->bind(':versionId', $versionId, ParameterType::INTEGER)
+                ->bind(':cellId', $cellId, ParameterType::INTEGER);
+            $db->setQuery($update)->execute();
+        }
+    }
+
+    /**
+     * The new target of a translation's link whose target changed in the source, or null.
+     *
+     * The translation holds the source's old link, or that link pointed at its own language. Either
+     * becomes the source's new link, pointed at the translation's language where it can be.
+     *
+     * @param   string                 $href        A link in the translation.
+     * @param   array<string, string>  $links       Each old link of the source with its new link.
+     * @param   LinkTranslator         $translator  Points a link at a language's pages.
+     * @param   string                 $language    The translation's language.
+     *
+     * @return  string|null
+     *
+     * @since   2.0.0
+     */
+    private static function followLink(string $href, array $links, LinkTranslator $translator, string $language): ?string
+    {
+        foreach ($links as $old => $new) {
+            $old = (string) $old;
+
+            if ($href === $old || $href === ($translator->translate($old, $language) ?? $old)) {
+                return $translator->translate($new, $language) ?? $new;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * The data of a stored version, or null when it is not stored (any more).
+     *
+     * @param   integer  $versionId  The version id.
+     *
+     * @return  array|null
+     *
+     * @since   2.0.0
+     */
+    private function versionData(int $versionId): ?array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('version_data'))
+            ->from($db->quoteName('#__history'))
+            ->where($db->quoteName('version_id') . ' = :versionId')
+            ->bind(':versionId', $versionId, ParameterType::INTEGER);
+        $data = json_decode((string) $db->setQuery($query)->loadResult(), true);
+
+        return \is_array($data) ? $data : null;
     }
 
     /**

@@ -157,6 +157,14 @@ so you can see at a glance which ones no longer match their original. A translat
 already on the site stays there while it waits, and re-translating it replaces its text
 without taking the page down.
 
+Only a change in the text there is to translate counts, or in what a translation takes over from
+its source: its category, access, author or tags. Publishing or unpublishing the source leaves its
+translations as they are (they follow its state, as described above). A change in nothing but
+where its links point is followed in each translation: the same links are pointed at the new
+pages, in the translation's language, and nothing is translated again. A translation is compared
+against the version it was made from, so when Joomla no longer keeps that version (the
+*Maximum Versions* option), it goes back to pending.
+
 ### Whether a translation is on the site
 
 The state in a cell says where a translation stands in its **review**. Whether the translated
