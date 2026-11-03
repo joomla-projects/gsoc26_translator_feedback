@@ -2380,6 +2380,324 @@ class TranslationModel extends BaseDatabaseModel
     }
 
     /**
+     * Bring the translated menus of a site in line with their source, once.
+     *
+     * For translations made before Translator Feedback was used - by hand, or with another tool -
+     * which never got what a translation made here gets: their place among their siblings (#227),
+     * a home page for their language (#229), params and links naming the language's own items
+     * (#157, #150), and menu modules on the language's pages (#62, #63). A translation is any item
+     * associated with a source-language item; nothing is translated again, and the parts not asked
+     * for are left alone.
+     *
+     * @param   string[]                 $parts        Any of 'order', 'homes', 'params', 'links', 'modules'.
+     * @param   CMSApplicationInterface  $application  The application, used to boot the managing components.
+     *
+     * @return  array<string, int>  Per part, how many menus, items or modules it changed.
+     *
+     * @since   2.0.0
+     */
+    public function alignWithSource(array $parts, CMSApplicationInterface $application): array
+    {
+        $done           = array_fill_keys($parts, 0);
+        $sourceLanguage = (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
+        $languages      = $this->targetLanguages($sourceLanguage);
+        $properties     = ContentTypesHelper::getProperties('com_menus.item');
+        $db             = $this->getDatabase();
+        $query          = $db->getQuery(true)
+            ->select($db->quoteName(['id', 'parent_id', 'menutype', 'home']))
+            ->from($db->quoteName('#__menu'))
+            ->where($db->quoteName('client_id') . ' = 0')
+            ->where($db->quoteName('published') . ' <> -2')
+            ->where($db->quoteName('language') . ' = :language')
+            ->bind(':language', $sourceLanguage)
+            ->order($db->quoteName('lft') . ' ASC');
+        $sources = $db->setQuery($query)->loadAssocList('id');
+        $groups  = [];
+
+        foreach (array_keys($sources) as $sourceId) {
+            $groups[$sourceId] = array_diff_key($this->getAssociationGroup((int) $sourceId, 'com_menus.item', '#__menu'), [$sourceLanguage => true]);
+        }
+
+        if (isset($done['params']) || isset($done['links'])) {
+            foreach ($groups as $group) {
+                foreach ($group as $language => $translationId) {
+                    $changed = $this->alignMenuItem((int) $translationId, (string) $language, $properties, isset($done['params']), isset($done['links']));
+
+                    foreach ($changed as $part) {
+                        $done[$part]++;
+                    }
+                }
+            }
+        }
+
+        if (isset($done['homes'])) {
+            $done['homes'] = $this->alignHomes($sources, $groups, $languages, $properties, $application);
+        }
+
+        if (isset($done['order'])) {
+            foreach (array_unique(array_map(static fn (array $source): int => (int) $source['parent_id'], $sources)) as $parentId) {
+                foreach ($languages as $language) {
+                    $before = $this->childrenOf($parentId, $language, $groups);
+                    $this->arrangeTranslatedChildren($parentId, 'com_menus.item', $language, $application);
+                    $done['order'] += $before !== $this->childrenOf($parentId, $language, $groups) ? 1 : 0;
+                }
+            }
+        }
+
+        if (isset($done['links'])) {
+            $done['links'] += $this->alignTexts($sourceLanguage);
+        }
+
+        if (isset($done['modules'])) {
+            $done['modules'] = $this->alignMenuModules($sources, $groups, $sourceLanguage);
+        }
+
+        $this->cleanCache('com_menus');
+
+        return $done;
+    }
+
+    /**
+     * Point a translated menu item's params and link at the items of its own language.
+     *
+     * @param   integer               $translationId  The translated menu item.
+     * @param   string                $language       Its language.
+     * @param   array<string, mixed>  $properties     The menu item's properties from the map.
+     * @param   boolean               $params         Whether to repoint the params.
+     * @param   boolean               $link           Whether to repoint the link.
+     *
+     * @return  string[]  The parts that changed: 'params', 'links'.
+     *
+     * @since   2.0.0
+     */
+    private function alignMenuItem(int $translationId, string $language, array $properties, bool $params, bool $link): array
+    {
+        $row = $this->getSourceItem($translationId, '#__menu');
+
+        if ($row === []) {
+            return [];
+        }
+
+        $new = [
+            'params' => $params ? $this->repointParamTargets((string) $row['params'], (array) ($properties['paramTargets'] ?? []), $language) : (string) $row['params'],
+            'link'   => $link ? $this->repointLinkTargets((string) $row['link'], (array) ($properties['linkTargets'] ?? []), $language) : (string) $row['link'],
+        ];
+        $changed = array_keys(array_filter($new, static fn (string $value, string $column): bool => $value !== (string) $row[$column], ARRAY_FILTER_USE_BOTH));
+
+        if ($changed === []) {
+            return [];
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->update($db->quoteName('#__menu'))
+            ->set($db->quoteName('params') . ' = :params')
+            ->set($db->quoteName('link') . ' = :link')
+            ->where($db->quoteName('id') . ' = :id')
+            ->bind(':params', $new['params'])
+            ->bind(':link', $new['link'])
+            ->bind(':id', $translationId, ParameterType::INTEGER);
+        $db->setQuery($query)->execute();
+
+        return array_map(static fn (string $column): string => $column === 'link' ? 'links' : $column, $changed);
+    }
+
+    /**
+     * Make the translation of the source language's home page the home page of each language without one.
+     *
+     * @param   array<int, array<string, mixed>>  $sources      The source menu items, by id.
+     * @param   array<int, array<string, int>>    $groups       Their translations, by source id and language.
+     * @param   string[]                          $languages    The target languages.
+     * @param   array<string, mixed>              $properties   The menu item's properties from the map.
+     * @param   CMSApplicationInterface           $application  The application, used to boot com_menus.
+     *
+     * @return  integer  How many languages got a home page.
+     *
+     * @since   2.0.0
+     */
+    private function alignHomes(array $sources, array $groups, array $languages, array $properties, CMSApplicationInterface $application): int
+    {
+        $home = null;
+
+        foreach ($sources as $id => $source) {
+            if ((int) $source['home'] === 1) {
+                $home = (int) $id;
+            }
+        }
+
+        $component = $application->bootComponent('com_menus');
+
+        if ($home === null || !$component instanceof MVCFactoryServiceInterface) {
+            return 0;
+        }
+
+        $made = 0;
+
+        foreach ($languages as $language) {
+            $translationId = $groups[$home][$language] ?? null;
+
+            if ($translationId === null || $this->languageHasHome('#__menu', (string) ($properties['languageHome'] ?? 'home'), $language)) {
+                continue;
+            }
+
+            // Through the table, not the model's setHome(): that checks the current user's rights,
+            // and a scheduled task runs without a user. The table keeps one home per language.
+            $table = $component->getMVCFactory()->createTable('Menu', 'Administrator');
+
+            if ($table->load((int) $translationId)) {
+                $table->home = 1;
+                $made += $table->check() && $table->store() ? 1 : 0;
+            }
+        }
+
+        return $made;
+    }
+
+    /**
+     * The order of a parent's translated children in a language, to see whether it changed.
+     *
+     * @param   integer                         $sourceParentId  The source parent.
+     * @param   string                          $language        The language.
+     * @param   array<int, array<string, int>>  $groups          The translations, by source id and language.
+     *
+     * @return  int[]
+     *
+     * @since   2.0.0
+     */
+    private function childrenOf(int $sourceParentId, string $language, array $groups): array
+    {
+        $parent = $sourceParentId === 1 ? 1 : ($groups[$sourceParentId][$language] ?? null);
+
+        if ($parent === null) {
+            return [];
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName('id'))
+            ->from($db->quoteName('#__menu'))
+            ->where($db->quoteName('parent_id') . ' = :parent')
+            ->where($db->quoteName('language') . ' = :language')
+            ->bind(':parent', $parent, ParameterType::INTEGER)
+            ->bind(':language', $language)
+            ->order($db->quoteName('lft') . ' ASC');
+
+        return array_map('intval', $db->setQuery($query)->loadColumn());
+    }
+
+    /**
+     * Point the internal links in every translated text at the pages of its own language.
+     *
+     * @param   string  $sourceLanguage  The source language.
+     *
+     * @return  integer  How many translations changed.
+     *
+     * @since   2.0.0
+     */
+    private function alignTexts(string $sourceLanguage): int
+    {
+        $db         = $this->getDatabase();
+        $texts      = new TranslatedTexts($db);
+        $translator = new LinkTranslator(new DatabaseLinkLookup($db));
+        $changed    = 0;
+
+        foreach (ContentTypesHelper::getContentTypes() as $contentType) {
+            $properties = ContentTypesHelper::getProperties($contentType);
+            $context    = (string) ($properties['context_associations'] ?? '');
+
+            if ($context === '') {
+                continue;
+            }
+
+            $query = $db->getQuery(true)
+                ->select($db->quoteName(['item.id', 'item.language']))
+                ->from($db->quoteName((string) ($properties['table'] ?? ''), 'item'))
+                ->join(
+                    'INNER',
+                    $db->quoteName('#__associations', 'association'),
+                    $db->quoteName('association.id') . ' = ' . $db->quoteName('item.id')
+                    . ' AND ' . $db->quoteName('association.context') . ' = :context'
+                )
+                ->where($db->quoteName('item.language') . ' NOT IN (:source, ' . $db->quote('*') . ')')
+                ->bind(':context', $context)
+                ->bind(':source', $sourceLanguage);
+
+            foreach ($db->setQuery($query)->loadAssocList() as $row) {
+                $language = (string) $row['language'];
+                $changed += $texts->rewrite(
+                    $contentType,
+                    (int) $row['id'],
+                    $language,
+                    static fn (string $html): string => $translator->translateHtml($html, $language)
+                ) ? 1 : 0;
+            }
+        }
+
+        return $changed;
+    }
+
+    /**
+     * Give each translated menu the modules of its source menu, and their pages.
+     *
+     * @param   array<int, array<string, mixed>>  $sources         The source menu items, by id.
+     * @param   array<int, array<string, int>>    $groups          Their translations, by source id and language.
+     * @param   string                            $sourceLanguage  The source language.
+     *
+     * @return  integer  How many modules were copied.
+     *
+     * @since   2.0.0
+     */
+    private function alignMenuModules(array $sources, array $groups, string $sourceLanguage): int
+    {
+        $modules = new MenuModules($this->getDatabase());
+        $menus   = [];
+
+        // The menu a language's translations of a source menu are in: the one most of them are in.
+        foreach ($groups as $sourceId => $group) {
+            foreach ($group as $language => $translationId) {
+                $menu = (string) ($this->getSourceItem((int) $translationId, '#__menu')['menutype'] ?? '');
+                $key  = $sources[$sourceId]['menutype'] . "\n" . $language;
+
+                $menus[$key][$menu] = ($menus[$key][$menu] ?? 0) + 1;
+            }
+        }
+
+        $made = 0;
+
+        foreach ($menus as $key => $counts) {
+            [$sourceMenu, $language] = explode("\n", $key);
+            arsort($counts);
+            $targetMenu = (string) array_key_first($counts);
+
+            $made += \count($modules->copy(
+                $sourceMenu,
+                $targetMenu,
+                $sourceLanguage,
+                $language,
+                function (string $title) use ($sourceLanguage, $language): string {
+                    // A title the provider cannot translate now is left for the translation teams.
+                    try {
+                        return (string) ($this->translateChunk(['title' => $title], $sourceLanguage, $language, '', [])['strings']['title'] ?? $title);
+                    } catch (\Throwable $e) {
+                        return $title;
+                    }
+                },
+                fn (int $itemId): ?int => $this->translatedRelatedId($itemId, 'com_menus.item', $language)
+            ));
+
+            foreach ($groups as $sourceId => $group) {
+                if (isset($group[$language]) && $sources[$sourceId]['menutype'] === $sourceMenu) {
+                    $modules->follow((int) $sourceId, (int) $group[$language], $language);
+                }
+            }
+        }
+
+        $this->cleanCache('com_modules');
+
+        return $made;
+    }
+
+    /**
      * Give a translated menu the modules of its source menu, and keep their pages up to date.
      *
      * The first translation into a language's menu makes the copies of the source menu's modules
@@ -2438,12 +2756,15 @@ class TranslationModel extends BaseDatabaseModel
      * the source's order to sorted by title or back, the translations already made are put in the
      * new order here.
      *
+     * Only the source language's children count: the root of the menus holds every language's
+     * items, and an item of another language is not a source to place a translation by.
+     *
      * @param   integer                  $sourceParentId  The source parent.
      * @param   string                   $contentType     The content type key, e.g. 'com_menus.item'.
      * @param   string                   $targetLanguage  The language whose translations to order.
      * @param   CMSApplicationInterface  $application     The application, used to boot the managing component.
      *
-     * @return  void
+     * @return  integer  How many translations were put in their place.
      *
      * @since   2.0.0
      */
@@ -2452,21 +2773,24 @@ class TranslationModel extends BaseDatabaseModel
         string $contentType,
         string $targetLanguage,
         CMSApplicationInterface $application
-    ): void {
+    ): int {
         $properties  = ContentTypesHelper::getProperties($contentType);
         $parentField = array_search($contentType, (array) ($properties['associatedFields'] ?? []), true);
 
         if (!\is_string($parentField)) {
-            return;
+            return 0;
         }
 
-        $table = (string) ($properties['table'] ?? '');
-        $db    = $this->getDatabase();
-        $query = $db->getQuery(true)
+        $sourceLanguage = (string) ComponentHelper::getParams('com_translations')->get('source_language', 'en-GB');
+        $table          = (string) ($properties['table'] ?? '');
+        $db             = $this->getDatabase();
+        $query          = $db->getQuery(true)
             ->select($db->quoteName('id'))
             ->from($db->quoteName($table))
             ->where($db->quoteName($parentField) . ' = :parent')
+            ->where($db->quoteName('language') . ' = :language')
             ->bind(':parent', $sourceParentId, ParameterType::INTEGER)
+            ->bind(':language', $sourceLanguage)
             ->order($db->quoteName('lft') . ' ASC');
         $children = array_map('intval', $db->setQuery($query)->loadColumn());
         $sorted   = $this->childrenOrder($sourceParentId, $properties);
@@ -2484,14 +2808,16 @@ class TranslationModel extends BaseDatabaseModel
         $component = $application->bootComponent((string) ($properties['component'] ?? ''));
 
         if (!$component instanceof MVCFactoryServiceInterface) {
-            return;
+            return 0;
         }
 
         $model = $component->getMVCFactory()->createModel((string) ($properties['model'] ?? ''), 'Administrator', ['ignore_request' => true]);
 
         if (!$model instanceof AdminModel) {
-            return;
+            return 0;
         }
+
+        $placed = 0;
 
         // Placed one by one in the order they go, each lands after the one placed before it.
         foreach ($children as $childId) {
@@ -2499,8 +2825,11 @@ class TranslationModel extends BaseDatabaseModel
 
             if ($translationId !== null) {
                 $this->placeLikeSource($model, $childId, $translationId, $targetLanguage, $contentType, $properties, true);
+                $placed++;
             }
         }
+
+        return $placed;
     }
 
     /**

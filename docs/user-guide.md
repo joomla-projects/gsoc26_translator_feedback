@@ -623,7 +623,7 @@ amounts of work but too slow for a whole language pack.
 
 ### Maintenance tasks
 
-Six more task types fix things after the fact. Create them as tasks without a schedule and
+Seven more task types fix things after the fact. Create them as tasks without a schedule and
 start them with **Run Test** in the list of Scheduled Tasks:
 
 - **Retry Failed Translations** gives the translations set aside as `failed` a new set of
@@ -642,6 +642,17 @@ start them with **Run Test** in the list of Scheduled Tasks:
   checked against the existing ones when they are distilled, so this is mostly needed for rules
   distilled before version 1.2.0.
 - **Import Translation Corrections** applies a file of corrections, see below.
+- **Bring Earlier Translations in Line with Their Source** is for a site that already had
+  translations before Translator Feedback was used, made by hand or with another tool. A
+  translation made here gets its place in the menu, a home page for its language, links to the
+  pages of its own language and menu modules when it is made (see "Links in a translation" and
+  the menu items under "The alias of a translated item"); this does the same once for the
+  translations already there. A translation is any item associated with an item in the source
+  language. Each part can be switched off in the task: the menu order (an order made by hand in a
+  translated menu is lost), home pages, menu item settings such as an alias's target, links in
+  menu items and texts, and menu modules (a module already made for a translated menu is kept
+  and gets the pages it is missing). Nothing is translated again except the titles of copied
+  menu modules. Make a backup first; running it again changes only what is no longer in line.
 
 ### Importing a set of corrections
 
