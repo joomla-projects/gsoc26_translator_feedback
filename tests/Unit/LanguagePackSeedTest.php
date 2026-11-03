@@ -43,6 +43,20 @@ final class LanguagePackSeedTest extends TestCase
     }
 
     /**
+     * An outdated pack's "_QQ_" is read as the double quote it stands for.
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testAnOutdatedQuoteIsReadAsADoubleQuote(): void
+    {
+        $this->assertSame('Clique em "Salvar" para manter.', LanguagePackReader::withQuotes('Clique em "_QQ_"Salvar"_QQ_" para manter.'));
+        $this->assertSame('Termina com "', LanguagePackReader::withQuotes('Termina com "_QQ_"'));
+        $this->assertSame('Sem aspas', LanguagePackReader::withQuotes('Sem aspas'));
+    }
+
+    /**
      * A pair that carries no translation choice is passed over.
      *
      * @param   string  $source    The string as written in the source language.
