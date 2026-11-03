@@ -173,6 +173,12 @@ are `translations_children_order` (`source` or `title`), `translations_children_
 `translations_children_last`. Only a type whose items nest under items of their own type (see
 `associatedFields`) has children to order.
 
+**`menuModules`** (boolean, optional) - for menu items: the first translation into a language's
+menu gives that menu a copy of each `mod_menu` module of the source menu, and every translation
+adds itself to the pages of the copies whose source module is on its source's page (see the user
+guide). A copy is linked to its source module in `#__associations` with the context
+`com_modules.item`.
+
 **`languageMenu`** (string, optional) - names the column holding the item's
 language-specific container. Menu items live in a per-language menu, so this is set to
 `menutype`. The producer derives the target-language menu from the source's value
@@ -314,6 +320,7 @@ what it names in its params, so a translated alias stands for the translated men
     "draftForceFields": { "menuordering": 0 },
     "languageHome": "home",
     "childrenOrder": "params",
+    "menuModules": true,
     "languageMenu": "menutype"
 }
 ```

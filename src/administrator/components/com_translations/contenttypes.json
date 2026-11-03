@@ -104,6 +104,7 @@
             "draftForceFields": { "menuordering": 0 },
             "languageHome": "home",
             "childrenOrder": "params",
+            "menuModules": true,
             "languageMenu": "menutype"
         }
     }

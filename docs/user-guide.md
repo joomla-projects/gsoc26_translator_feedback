@@ -256,6 +256,20 @@ it. A sorted list stays sorted: a child item translated again, or whose translat
 changed by a translator or by hand, moves to its place in the alphabet. Changing the setting puts
 the translations already made in the new order at once.
 
+A menu shows on the site only through a menu module. The first menu item translated into a
+language's menu gives that menu a copy of each menu module of the original menu: the same type,
+position and settings, the language's menu, its own language and a translated title. A module
+of the original menu set to *All* languages would show on every language's pages beside its copy,
+so it gets the source language. A copy is on the translations of the pages its original is on,
+and it keeps up as the menu is translated: a menu item translated later is added to the pages of
+the copies whose original is on its original's page. A side menu assigned to the pages of its own
+branch therefore shows on the translated branch, and a module "on all pages except" some leaves
+out their translations. A copy whose original shows the branch of a chosen menu item (its *Base
+Item*) shows the branch of that item's translation. A menu module you made yourself for the
+language's menu, at the same position and starting at the same level, is kept and taken as the
+copy. A copy is linked to its original as an association (context `com_modules.item`), the way
+Joomla links translated items.
+
 Joomla's language switcher only lists a language that has a home page. The translation of the
 source language's home page becomes the home page of its language, when that language has none
 yet; it shows in the switcher once it is published. This needs a home page for the source

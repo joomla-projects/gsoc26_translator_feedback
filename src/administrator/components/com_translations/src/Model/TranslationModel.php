@@ -18,6 +18,7 @@ use Joomla\CMS\Application\ApplicationHelper;
 use Joomla\CMS\Application\CMSApplicationInterface;
 use Joomla\CMS\Component\ComponentHelper;
 use Joomla\CMS\Extension\ComponentInterface;
+use Joomla\CMS\Log\Log;
 use Joomla\CMS\MVC\Factory\MVCFactoryServiceInterface;
 use Joomla\CMS\MVC\Model\AdminModel;
 use Joomla\CMS\MVC\Model\BaseDatabaseModel;
@@ -39,6 +40,7 @@ use Joomla\Component\Translations\Administrator\Helper\TranslatableValuesHelper;
 use Joomla\Component\Translations\Administrator\Link\DatabaseLinkLookup;
 use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
 use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
+use Joomla\Component\Translations\Administrator\Module\MenuModules;
 use Joomla\Component\Translations\Administrator\Order\SiblingOrder;
 use Joomla\Database\ParameterType;
 use Joomla\Database\QueryInterface;
@@ -1617,6 +1619,10 @@ class TranslationModel extends BaseDatabaseModel
         // the place it has, which someone may have chosen by hand, unless its parent sorts by title.
         $this->placeLikeSource($model, (int) $sourceItem['id'], $draftId, $targetLanguage, $contentType, $properties, $newState !== null);
 
+        if (!empty($properties['menuModules'])) {
+            $this->followMenuModules($sourceItem, $draftId, $targetLanguage, $properties);
+        }
+
         // A category's custom fields are scoped to its own id, so a field assigned only to the source
         // category does not reach the new draft on save; copy those assignments and store their values.
         if (!empty($properties['copyCustomFieldAssignments']) && $customFields !== []) {
@@ -2371,6 +2377,58 @@ class TranslationModel extends BaseDatabaseModel
         if ($first !== null) {
             $node->moveByReference($first, 'before', $translationId);
         }
+    }
+
+    /**
+     * Give a translated menu the modules of its source menu, and keep their pages up to date.
+     *
+     * The first translation into a language's menu makes the copies of the source menu's modules
+     * (see MenuModules); every translation adds itself to the pages of the copies whose source
+     * module is on its source's page. A module is extra to the translation itself, so a failure
+     * here is logged rather than failing a translation that is already saved.
+     *
+     * @param   array<string, mixed>  $sourceItem      The source menu item.
+     * @param   integer               $draftId         Its translation.
+     * @param   string                $targetLanguage  The translation's language.
+     * @param   array<string, mixed>  $properties      The content type's properties from the map.
+     *
+     * @return  void
+     *
+     * @since   2.0.0
+     */
+    private function followMenuModules(array $sourceItem, int $draftId, string $targetLanguage, array $properties): void
+    {
+        $sourceLanguage = (string) ($sourceItem['language'] ?? '');
+        $draft          = $this->getSourceItem($draftId, (string) ($properties['table'] ?? ''));
+
+        try {
+            $modules = new MenuModules($this->getDatabase());
+            $made    = $modules->copy(
+                (string) ($sourceItem['menutype'] ?? ''),
+                (string) ($draft['menutype'] ?? ''),
+                $sourceLanguage,
+                $targetLanguage,
+                fn (string $title): string => (string) ($this->translateChunk(['title' => $title], $sourceLanguage, $targetLanguage, '', [])['strings']['title'] ?? $title),
+                fn (int $itemId): ?int => $this->translatedRelatedId($itemId, 'com_menus.item', $targetLanguage)
+            );
+            $modules->follow((int) $sourceItem['id'], $draftId, $targetLanguage);
+
+            if ($made !== []) {
+                Log::add(
+                    \sprintf('Copied %d menu module(s) for the %s menu: %s.', \count($made), $targetLanguage, implode(', ', $made)),
+                    Log::INFO,
+                    'translations'
+                );
+            }
+        } catch (\Throwable $e) {
+            Log::add(
+                \sprintf('Could not keep the menu modules of menu item %d up to date in %s: %s', (int) $sourceItem['id'], $targetLanguage, $e->getMessage()),
+                Log::WARNING,
+                'translations'
+            );
+        }
+
+        $this->cleanCache('com_modules');
     }
 
     /**
