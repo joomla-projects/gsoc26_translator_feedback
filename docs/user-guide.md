@@ -458,6 +458,12 @@ and no run sends it again. Translate such an item by hand from its cell once the
 dealt with, or give it new attempts with **Retry Failed Translations** (see "Maintenance
 tasks"). Editing the source item also gives its translations a fresh set of attempts.
 
+An answer that cannot be a translation counts as a failed attempt too, rather than being saved:
+a field that comes back as another field (a body under the title), and a text of eight words or
+more that comes back exactly as it was sent, in the source language. A short text such as a name
+may stay as it is, and so may any text between two variants of one language, such as en-GB and
+en-US. The error then reads "The provider left part of the item untranslated."
+
 A run that got part of a long article translated gives that article its attempts back, because
 the run worked: the attempts are there to stop an item that cannot be translated from being
 paid for again and again, not to limit how many runs a long article may take. An article whose

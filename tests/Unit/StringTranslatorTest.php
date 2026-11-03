@@ -219,6 +219,34 @@ final class StringTranslatorTest extends TestCase
     }
 
     /**
+     * A sentence sent back as it was is no translation; a name, or a text between two variants of
+     * one language, can be.
+     *
+     * @return  void
+     *
+     * @since   3.0.0
+     */
+    public function testASourceTextSentBackIsNoTranslation(): void
+    {
+        $strings = [
+            'title'     => 'Joomla Extensions Directory',
+            'introtext' => '<p>Privacy workflow lets a site owner handle the requests of its users.</p>',
+            'fulltext'  => '<p>Run <code>{{keep:0}}</code> and then <code>{{keep:1}}</code>, then <code>{{keep:2}}</code>.</p>',
+        ];
+        $answer = $strings;
+
+        $this->assertSame(
+            ['title' => $strings['title'], 'fulltext' => $strings['fulltext']],
+            StringTranslator::translatedAtAll($strings, $answer, 'en-GB', 'pt-PT'),
+            'only the sentence of eight words or more is refused; code is not counted'
+        );
+        $this->assertSame($answer, StringTranslator::translatedAtAll($strings, $answer, 'en-GB', 'en-US'));
+
+        $answer['introtext'] = '<p>O fluxo de privacidade permite ao dono do site tratar os pedidos.</p>';
+        $this->assertSame($answer, StringTranslator::translatedAtAll($strings, $answer, 'en-GB', 'pt-PT'));
+    }
+
+    /**
      * Run the provider's answer through the check.
      *
      * @param   array  $strings       The source strings.
