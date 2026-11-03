@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS `#__translations_queue_states` (
   -- a print of the source they belong to, the translated parts, and the terms they were translated
   -- with. Cleared once the draft is saved; NULL while an item needs no more than one request.
   `partial` mediumtext,
+  -- 1 while the translation is kept off the site because its source is: it is published again
+  -- when the source is. A translation taken off the site by hand is never held.
+  `held_by_source` tinyint unsigned NOT NULL DEFAULT 0,
   `modified` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_queue_lang` (`queue_id`, `target_language`),

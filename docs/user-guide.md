@@ -54,8 +54,9 @@ its translations stay out of date without telling anyone.
 2. Joomla installs plugins disabled, so enable them in **System, Manage, Plugins**:
    - **Content - Translations** keeps the queue in step with your content. It notices when an
      original is edited, adds the "no need for translation" toggle, preselects the source
-     language on a new item, and trashes or removes translations when their original is trashed
-     or deleted. Enable it before you start.
+     language on a new item, keeps translations off the site while their original is (see
+     "Translations follow their original"), and trashes or removes translations when their
+     original is trashed or deleted. Enable it before you start.
    - **Translation - Claude** makes the translation call. Enter your **API key** and choose a
      **Model**.
    - **RAG - Claude** distils rules from feedback and works out the standard form of words. It
@@ -85,7 +86,8 @@ the source and the special "All" (`*`) language is treated as a target language.
 
 By default a machine translation is created unpublished, so nothing reaches your visitors
 before a translator has read it. The **Auto-Publish New Translations** option (Options) changes
-that: with it on, a translation goes live the moment it is created.
+that: with it on, a translation goes live the moment it is created - unless its original is not
+published, in which case it waits and goes live together with the original.
 
 The option applies only the **first** time an item is translated into a language. Once a
 translation exists, translating it again never changes whether it is on the site: a live
@@ -98,6 +100,20 @@ makes it reasonable is that the corrections made earlier are captured as feedbac
 have been distilled and the rules that came out of them published, a later translation speaks the
 terminology the community taught it. Joomla's version history also keeps the approved text, so
 nothing is lost.
+
+### Translations follow their original
+
+A translation is never on the site while its original is not. When an original is unpublished
+or archived, its published translations are unpublished or archived with it. When the original
+is published again, exactly those translations are published again.
+
+A translation that somebody took off the site themselves is left alone: publishing the original
+does not bring it back. Only what went off the site because of the original comes back with it.
+**Approve & Publish** works the same way: while the original is not published, the translation
+waits and is published together with the original.
+
+This needs the **Content - Translations** plugin, and it applies to changes made after the plugin
+was enabled.
 
 ## The views and the workflow
 
