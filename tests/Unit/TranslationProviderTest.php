@@ -306,7 +306,7 @@ final class TranslationProviderTest extends TestCase
             ['en-GB', 'nl-NL', [], 'Title: Headers', ['header' => 'kopregel', 'policy' => 'beleid']]
         );
 
-        $this->assertStringContainsString('ALREADY USED EARLIER IN THIS DOCUMENT', $prompt);
+        $this->assertStringContainsString('ALREADY USED EARLIER IN THIS DOCUMENT OR ON THIS SITE', $prompt);
         $this->assertStringContainsString('- "header" -> "kopregel"', $prompt);
         $this->assertStringContainsString('- "policy" -> "beleid"', $prompt);
     }

@@ -42,6 +42,7 @@ use Joomla\Component\Translations\Administrator\Link\LinkTranslator;
 use Joomla\Component\Translations\Administrator\Link\TranslatedTexts;
 use Joomla\Component\Translations\Administrator\Module\MenuModules;
 use Joomla\Component\Translations\Administrator\Order\SiblingOrder;
+use Joomla\Component\Translations\Administrator\Title\RelatedTitles;
 use Joomla\Database\ParameterType;
 use Joomla\Database\QueryInterface;
 use Joomla\Filesystem\Folder;
@@ -88,6 +89,22 @@ class TranslationModel extends BaseDatabaseModel
      * @since  1.4.0
      */
     private const MAX_GLOSSARY_TERMS = 60;
+
+    /**
+     * The field holding an item's title, in every content type.
+     *
+     * @var    string
+     * @since  3.0.0
+     */
+    private const TITLE = 'title';
+
+    /**
+     * The content type of menu items.
+     *
+     * @var    string
+     * @since  3.0.0
+     */
+    private const MENU_ITEM = 'com_menus.item';
 
     /**
      * Translate a source item into one target language.
@@ -156,6 +173,13 @@ class TranslationModel extends BaseDatabaseModel
             }
         }
 
+        // The title a related item was translated with already is this item's too, and is not asked again.
+        $known = RelatedTitles::known(
+            (string) ($strings[self::TITLE] ?? ''),
+            $this->relatedTitles($sourceItem, $contentType, $properties, $targetLanguage)
+        );
+        $fixed = $known['title'] !== null ? [self::TITLE => $known['title']] : [];
+
         $stateId    = $this->getOrCreateStateId($sourceItemId, $contentType, $targetLanguage);
         $translated = $this->translateInChunks(
             $strings,
@@ -163,7 +187,9 @@ class TranslationModel extends BaseDatabaseModel
             $targetLanguage,
             $stateId,
             $budget ?? new TimeBudget(),
-            $result
+            $result,
+            $fixed,
+            $known['terms']
         );
 
         // The run's time went before every part was translated; what is done is stored and waits.
@@ -984,9 +1010,10 @@ class TranslationModel extends BaseDatabaseModel
      * the context between an item's strings. The first provider that returns translations
      * wins; with no provider enabled there is nothing to translate with, so this fails.
      *
-     * @param   array   $strings         The source strings keyed by field.
-     * @param   string  $sourceLanguage  The source language code.
-     * @param   string  $targetLanguage  The target language code.
+     * @param   array                  $strings         The source strings keyed by field.
+     * @param   string                 $sourceLanguage  The source language code.
+     * @param   string                 $targetLanguage  The target language code.
+     * @param   array<string, string>  $terms           The terms to translate as given.
      *
      * @return  array  The translated strings, keyed as given.
      *
@@ -994,9 +1021,9 @@ class TranslationModel extends BaseDatabaseModel
      *
      * @since   0.4.0
      */
-    private function translateStrings(array $strings, string $sourceLanguage, string $targetLanguage): array
+    private function translateStrings(array $strings, string $sourceLanguage, string $targetLanguage, array $terms = []): array
     {
-        return $this->translateChunk($strings, $sourceLanguage, $targetLanguage, '', [])['strings'];
+        return $this->translateChunk($strings, $sourceLanguage, $targetLanguage, '', $terms)['strings'];
     }
 
     /**
@@ -1062,12 +1089,17 @@ class TranslationModel extends BaseDatabaseModel
      * way in the next. Every answered request is stored before the next is sent, so a run that
      * is cut off keeps what it has paid for.
      *
-     * @param   array           $strings         The item's source strings keyed by field.
-     * @param   string          $sourceLanguage  The source language code.
-     * @param   string          $targetLanguage  The target language code.
-     * @param   integer         $stateId         The id of the item's state row, where parts are stored.
-     * @param   TimeBudget      $budget          How long this run may keep sending requests.
-     * @param   RunResult|null  $result          The run's result, to count the parts translated in.
+     * A string whose translation is known already is not sent, but its source still tells the
+     * other parts what the item is about, and the terms given are kept in every request.
+     *
+     * @param   array                  $strings         The item's source strings keyed by field.
+     * @param   string                 $sourceLanguage  The source language code.
+     * @param   string                 $targetLanguage  The target language code.
+     * @param   integer                $stateId         The id of the item's state row, where parts are stored.
+     * @param   TimeBudget             $budget          How long this run may keep sending requests.
+     * @param   RunResult|null         $result          The run's result, to count the parts translated in.
+     * @param   array<string, string>  $fixed           The translations known already, keyed by field.
+     * @param   array<string, string>  $terms           The terms to translate as given.
      *
      * @return  array|null  The translated strings keyed by field, or null when parts are still to be done.
      *
@@ -1081,13 +1113,15 @@ class TranslationModel extends BaseDatabaseModel
         string $targetLanguage,
         int $stateId,
         TimeBudget $budget,
-        ?RunResult $result
+        ?RunResult $result,
+        array $fixed = [],
+        array $terms = []
     ): ?array {
-        $chunks = TextChunker::plan($strings, $this->chunkTargetChars());
+        $chunks = TextChunker::plan(array_diff_key($strings, $fixed), $this->chunkTargetChars());
 
         // Nothing to translate: no request is made, so none is timed either.
         if ($chunks === []) {
-            return [];
+            return $fixed;
         }
 
         // One request holds the item whole, keyed by its own field names: nothing was cut, so there
@@ -1096,7 +1130,7 @@ class TranslationModel extends BaseDatabaseModel
             $budget->startRequest();
 
             try {
-                $translated = $this->translateStrings($chunks[0], $sourceLanguage, $targetLanguage);
+                $translated = $this->translateStrings($chunks[0], $sourceLanguage, $targetLanguage, $terms);
             } finally {
                 $budget->endRequest();
             }
@@ -1107,7 +1141,7 @@ class TranslationModel extends BaseDatabaseModel
                 throw new \RuntimeException('The provider left part of the item untranslated.');
             }
 
-            return $translated;
+            return array_merge($translated, $fixed);
         }
 
         // The print is of the parts rather than of the strings: the same text cut in other places -
@@ -1122,7 +1156,7 @@ class TranslationModel extends BaseDatabaseModel
         // on guide.joomla.org held a body under its title and failed identically each time it was
         // tried. Dropping it here puts it back among the parts still to translate.
         $parts    = StringTranslator::ofTheirSources(array_merge(...array_values($chunks)), $stored['parts']);
-        $glossary = $stored['glossary'];
+        $glossary = array_merge($terms, $stored['glossary'], $terms);
         $context  = TextChunker::documentContext($strings);
         $sent     = false;
 
@@ -1153,8 +1187,9 @@ class TranslationModel extends BaseDatabaseModel
             $parts = array_merge($parts, $answer['strings']);
 
             // The terms of the earliest parts are kept when the glossary is full: those are the
-            // ones the rest of the item has already been made to agree with.
-            $glossary = \array_slice(array_merge($glossary, $answer['glossary']), 0, self::MAX_GLOSSARY_TERMS, true);
+            // ones the rest of the item has already been made to agree with. The terms given come
+            // first and stay as given, whatever the provider reports it chose.
+            $glossary = \array_slice(array_merge($glossary, $answer['glossary'], $terms), 0, self::MAX_GLOSSARY_TERMS, true);
 
             // A request that answered nothing new is no progress, however well it went: counting
             // it would give an item that keeps coming back short an endless set of attempts.
@@ -1176,7 +1211,7 @@ class TranslationModel extends BaseDatabaseModel
             }
         }
 
-        return TextChunker::assemble($parts);
+        return array_merge(TextChunker::assemble($parts), $fixed);
     }
 
     /**
@@ -1875,6 +1910,173 @@ class TranslationModel extends BaseDatabaseModel
         );
 
         return isset($group[$targetLanguage]) ? (int) $group[$targetLanguage] : null;
+    }
+
+    /**
+     * The source and translated titles of the items an item is the menu item of, or the page of.
+     *
+     * A menu item is related to what it opens: the article, the category or the single tag its
+     * link names. An article, a category or a tag is related to the menu items of its language
+     * that open it. Only a related item translated into the target language, and not trashed
+     * there, has a title to give.
+     *
+     * @param   array   $sourceItem      The source item's column values.
+     * @param   string  $contentType     The item's content type key.
+     * @param   array   $properties      The content type's properties from the map.
+     * @param   string  $targetLanguage  The target language code.
+     *
+     * @return  array<array{0: string, 1: string}>  Per related item its source title and its translated title.
+     *
+     * @since   3.0.0
+     */
+    private function relatedTitles(array $sourceItem, string $contentType, array $properties, string $targetLanguage): array
+    {
+        $related = [];
+
+        if (isset($properties['linkTargets'])) {
+            $opened = self::opens((string) ($sourceItem['link'] ?? ''), (array) $properties['linkTargets']);
+
+            if ($opened !== null) {
+                $related[] = $opened;
+            }
+        } else {
+            foreach ($this->menuItemsOpening((int) $sourceItem['id'], $contentType, (string) $sourceItem['language']) as $menuItemId) {
+                $related[] = [self::MENU_ITEM, $menuItemId];
+            }
+        }
+
+        $titles = [];
+
+        foreach ($related as [$relatedType, $relatedId]) {
+            $translationId = $this->translatedRelatedId($relatedId, $relatedType, $targetLanguage);
+
+            if ($translationId === null) {
+                continue;
+            }
+
+            $relatedProperties = ContentTypesHelper::getProperties($relatedType);
+            $found             = $this->liveTitles(
+                (string) ($relatedProperties['table'] ?? ''),
+                (string) ($relatedProperties['stateField'] ?? ''),
+                [$relatedId, $translationId]
+            );
+
+            if (isset($found[$relatedId], $found[$translationId])) {
+                $titles[] = [$found[$relatedId], $found[$translationId]];
+            }
+        }
+
+        return $titles;
+    }
+
+    /**
+     * The item a menu item's link opens, when it opens one.
+     *
+     * Only the link's id is taken, the item that is the page; a category list filtered by a tag
+     * is the category's page, not the tag's. A tag page showing several tags is none of theirs.
+     *
+     * @param   string                                $link         The menu item's link.
+     * @param   array<string, array<string, string>>  $linkTargets  The related content type per query parameter, keyed by the link's option and view.
+     *
+     * @return  array{0: string, 1: int}|null  The content type and id of the item opened, or null.
+     *
+     * @since   3.0.0
+     */
+    private static function opens(string $link, array $linkTargets): ?array
+    {
+        $arguments = [];
+        parse_str((string) parse_url(htmlspecialchars_decode($link), PHP_URL_QUERY), $arguments);
+
+        $type = $linkTargets[($arguments['option'] ?? '') . '.' . ($arguments['view'] ?? '')]['id'] ?? null;
+        $id   = $arguments['id'] ?? null;
+
+        if (\is_array($id)) {
+            $id = \count($id) === 1 ? reset($id) : null;
+        }
+
+        return \is_string($type) && \is_scalar($id) && (int) $id > 0 ? [$type, (int) $id] : null;
+    }
+
+    /**
+     * The site menu items of a language that open an item, oldest first.
+     *
+     * @param   integer  $itemId       The item's id.
+     * @param   string   $contentType  The item's content type key.
+     * @param   string   $language     The item's language.
+     *
+     * @return  integer[]
+     *
+     * @since   3.0.0
+     */
+    private function menuItemsOpening(int $itemId, string $contentType, string $language): array
+    {
+        $linkTargets = (array) (ContentTypesHelper::getProperties(self::MENU_ITEM)['linkTargets'] ?? []);
+        $views       = array_keys(array_filter($linkTargets, static fn ($parameters): bool => ($parameters['id'] ?? null) === $contentType));
+
+        if ($views === []) {
+            return [];
+        }
+
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['id', 'link']))
+            ->from($db->quoteName('#__menu'))
+            ->where($db->quoteName('client_id') . ' = 0')
+            ->where($db->quoteName('type') . ' = ' . $db->quote('component'))
+            ->where($db->quoteName('published') . ' <> -2')
+            ->where($db->quoteName('language') . ' = :language')
+            ->where($db->quoteName('link') . ' LIKE ' . $db->quote('%=' . $itemId . '%'))
+            ->bind(':language', $language, ParameterType::STRING)
+            ->order($db->quoteName('id'));
+
+        $alternatives = [];
+
+        foreach ($views as $view) {
+            [$option, $name] = explode('.', $view, 2);
+            $alternatives[]  = $db->quoteName('link') . ' LIKE '
+                . $db->quote('index.php?option=' . $option . '&view=' . $name . '&%');
+        }
+
+        $query->extendWhere('AND', $alternatives, 'OR');
+        $db->setQuery($query);
+
+        $ids = [];
+
+        foreach ($db->loadAssocList() as $row) {
+            if (self::opens((string) $row['link'], $linkTargets) === [$contentType, $itemId]) {
+                $ids[] = (int) $row['id'];
+            }
+        }
+
+        return $ids;
+    }
+
+    /**
+     * The titles of the items that are not trashed, by id.
+     *
+     * @param   string     $table       The content type's table.
+     * @param   string     $stateField  The column holding the item's state, empty when it has none.
+     * @param   integer[]  $ids         The item ids.
+     *
+     * @return  array<int, string>
+     *
+     * @since   3.0.0
+     */
+    private function liveTitles(string $table, string $stateField, array $ids): array
+    {
+        $db    = $this->getDatabase();
+        $query = $db->getQuery(true)
+            ->select($db->quoteName(['id', self::TITLE]))
+            ->from($db->quoteName($table))
+            ->whereIn($db->quoteName('id'), $ids);
+
+        if ($stateField !== '') {
+            $query->where($db->quoteName($stateField) . ' <> -2');
+        }
+
+        $db->setQuery($query);
+
+        return array_map('strval', $db->loadAssocList('id', self::TITLE));
     }
 
     /**

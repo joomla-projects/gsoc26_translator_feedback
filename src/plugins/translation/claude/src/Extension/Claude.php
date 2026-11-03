@@ -203,7 +203,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      * @param   string                 $targetLanguage   The target language code.
      * @param   array                  $rules            The distilled rules to steer the translation, grouped by rule type.
      * @param   string                 $documentContext  What the document is about, empty when the strings are all of it.
-     * @param   array<string, string>  $terminology      The terms earlier parts of the document were translated with.
+     * @param   array<string, string>  $terminology      The terms earlier parts of the document, or related items, were translated with.
      * @param   string                 $apiKey           The Anthropic API key.
      *
      * @return  array{strings: array, glossary: array<string, string>}  The translated strings, and the terms chosen.
@@ -386,7 +386,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
      * @param   string                 $targetLanguage   The target language code.
      * @param   array                  $rules            The distilled rules to steer the translation, grouped by rule type.
      * @param   string                 $documentContext  What the document is about, empty when the strings are all of it.
-     * @param   array<string, string>  $terminology      The terms earlier parts of the document were translated with.
+     * @param   array<string, string>  $terminology      The terms earlier parts of the document, or related items, were translated with.
      *
      * @return  string
      *
@@ -432,10 +432,13 @@ final class Claude extends CMSPlugin implements SubscriberInterface
     }
 
     /**
-     * Build the guidance naming the terms earlier parts of the document were translated with.
+     * Build the guidance naming the terms earlier parts of the document, or related items, were translated with.
      *
      * Without it the same word can come back translated one way in one part of an article and
      * another way in the next, since each part is a request of its own.
+     *
+     * The terms of an item's related items come in the same way: the title a menu item was
+     * translated with is the one for the article it opens.
      *
      * @param   array<string, string>  $terminology  The target term for each source term.
      *
@@ -460,7 +463,7 @@ final class Claude extends CMSPlugin implements SubscriberInterface
             return '';
         }
 
-        return "ALREADY USED EARLIER IN THIS DOCUMENT (translate these the same way again):\n" . implode("\n", $lines);
+        return "ALREADY USED EARLIER IN THIS DOCUMENT OR ON THIS SITE (translate these the same way again):\n" . implode("\n", $lines);
     }
 
     /**
