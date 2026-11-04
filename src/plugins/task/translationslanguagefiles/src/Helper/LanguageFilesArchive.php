@@ -145,8 +145,9 @@ final class LanguageFilesArchive
             '',
             '## Manifest entries',
             '',
-            'Joomla only installs the language files a manifest lists. Add these lines to the `<languages>`',
-            'element of each manifest, next to its en-GB entries:',
+            'Joomla only installs the language files a manifest lists. Run `php build/language-entries.php`',
+            'in the repository: it adds these lines to the `<languages>` element of each manifest, next to',
+            'its en-GB entries.',
             '',
         ];
 

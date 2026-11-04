@@ -5,7 +5,7 @@
 	<author>Joomla! Project</author>
 	<authorUrl>https://github.com/joomla-projects/gsoc26_translator_feedback</authorUrl>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-	<version>1.6.0</version>
+	<version>1.6.1</version>
 	<description>PLG_TASK_TRANSLATIONSTRANSLATE_XML_DESCRIPTION</description>
 	<namespace path="src">Joomla\Plugin\Task\TranslationsTranslate</namespace>
 	<files>
@@ -16,5 +16,23 @@
 	<languages>
 		<language tag="en-GB">language/en-GB/plg_task_translationstranslate.ini</language>
 		<language tag="en-GB">language/en-GB/plg_task_translationstranslate.sys.ini</language>
+		<language tag="de-DE">language/de-DE/plg_task_translationstranslate.ini</language>
+		<language tag="de-DE">language/de-DE/plg_task_translationstranslate.sys.ini</language>
+		<language tag="es-ES">language/es-ES/plg_task_translationstranslate.ini</language>
+		<language tag="es-ES">language/es-ES/plg_task_translationstranslate.sys.ini</language>
+		<language tag="fa-IR">language/fa-IR/plg_task_translationstranslate.ini</language>
+		<language tag="fa-IR">language/fa-IR/plg_task_translationstranslate.sys.ini</language>
+		<language tag="fr-FR">language/fr-FR/plg_task_translationstranslate.ini</language>
+		<language tag="fr-FR">language/fr-FR/plg_task_translationstranslate.sys.ini</language>
+		<language tag="it-IT">language/it-IT/plg_task_translationstranslate.ini</language>
+		<language tag="it-IT">language/it-IT/plg_task_translationstranslate.sys.ini</language>
+		<language tag="nl-NL">language/nl-NL/plg_task_translationstranslate.ini</language>
+		<language tag="nl-NL">language/nl-NL/plg_task_translationstranslate.sys.ini</language>
+		<language tag="pt-BR">language/pt-BR/plg_task_translationstranslate.ini</language>
+		<language tag="pt-BR">language/pt-BR/plg_task_translationstranslate.sys.ini</language>
+		<language tag="pt-PT">language/pt-PT/plg_task_translationstranslate.ini</language>
+		<language tag="pt-PT">language/pt-PT/plg_task_translationstranslate.sys.ini</language>
+		<language tag="ru-RU">language/ru-RU/plg_task_translationstranslate.ini</language>
+		<language tag="ru-RU">language/ru-RU/plg_task_translationstranslate.sys.ini</language>
 	</languages>
 </extension>

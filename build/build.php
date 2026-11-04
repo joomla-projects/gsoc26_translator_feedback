@@ -265,7 +265,11 @@ function buildPackage(): void
 
     $zip = archive($target);
     $zip->addFile($manifest, 'pkg_translations.xml');
-    $zip->addFile(SOURCE . '/language/en-GB/pkg_translations.sys.ini', 'language/en-GB/pkg_translations.sys.ini');
+
+    // The package's own language file, in en-GB and every language it is translated into.
+    foreach (glob(SOURCE . '/language/*/pkg_translations.sys.ini') ?: [] as $languageFile) {
+        $zip->addFile($languageFile, 'language/' . basename(\dirname($languageFile)) . '/pkg_translations.sys.ini');
+    }
 
     $extensions = simplexml_load_file($manifest)->files->file;
 

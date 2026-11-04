@@ -8,7 +8,7 @@
 	<packager>Joomla! Project</packager>
 	<packagerurl>https://github.com/joomla-projects/gsoc26_translator_feedback</packagerurl>
 	<license>GNU General Public License version 2 or later; see LICENSE.txt</license>
-	<version>4.0.0</version>
+	<version>4.0.1</version>
 	<description>PKG_TRANSLATIONS_XML_DESCRIPTION</description>
 	<files>
 		<!-- The id of each extension is the element Joomla stores it under -->
@@ -21,6 +21,15 @@
 	</files>
 	<languages folder="language">
 		<language tag="en-GB">en-GB/pkg_translations.sys.ini</language>
+		<language tag="de-DE">de-DE/pkg_translations.sys.ini</language>
+		<language tag="es-ES">es-ES/pkg_translations.sys.ini</language>
+		<language tag="fa-IR">fa-IR/pkg_translations.sys.ini</language>
+		<language tag="fr-FR">fr-FR/pkg_translations.sys.ini</language>
+		<language tag="it-IT">it-IT/pkg_translations.sys.ini</language>
+		<language tag="nl-NL">nl-NL/pkg_translations.sys.ini</language>
+		<language tag="pt-BR">pt-BR/pkg_translations.sys.ini</language>
+		<language tag="pt-PT">pt-PT/pkg_translations.sys.ini</language>
+		<language tag="ru-RU">ru-RU/pkg_translations.sys.ini</language>
 	</languages>
 	<!-- Where an installed site asks whether there is a newer version. The file is generated
 	     by build/update-xml.php; a site remembers this URL, so it is not moved. -->

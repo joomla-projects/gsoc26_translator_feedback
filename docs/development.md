@@ -182,9 +182,11 @@ from the core language packs.
    permission to manage Scheduled Tasks.
    - **Download All for the Repository** gives one zip for this repository. Unpack it into
      `src/`: every path in it is the path the file has here, such as
-     `plugins/task/translationsdistiller/language/ar-AA/plg_task_translationsdistiller.ini`. Its
-     `README.md` lists the `<language>` lines to add to each manifest - Joomla only installs the
-     language files a manifest names - and how complete each language is.
+     `plugins/task/translationsdistiller/language/ar-AA/plg_task_translationsdistiller.ini`. Then
+     run `php build/language-entries.php`: Joomla only installs the language files a manifest
+     names, and this adds a `<language>` line for every translated file to the manifest that ships
+     it. `LanguageEntriesTest` fails while one is missing. The build ships every language there
+     is. The archive's `README.md` says how complete each language is.
    - **Download Package**, per language, gives an installable zip: a file extension
      `files_translatorfeedback_<tag>` (for example `files_translatorfeedback_nl-nl`) that puts
      each translated file where a site keeps its en-GB original, with the tag in place of en-GB.
