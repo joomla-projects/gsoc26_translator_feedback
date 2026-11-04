@@ -13,6 +13,7 @@
         <downloads>
             <downloadurl type="full" format="zip">https://github.com/joomla-projects/gsoc26_translator_feedback/releases/download/v4.0.1/plg_task_translationslanguagefiles-1.1.2.zip</downloadurl>
         </downloads>
+        <sha512>e86c2b5c667ab55e3582bbb3188b996614ab67e2d9378aac88f7630aebff99284b2d8a854831b1c989eb2218d5bd6441dfde7007dd0dedd2c5840585cdf2f2b5</sha512>
         <tags>
             <tag>stable</tag>
         </tags>
