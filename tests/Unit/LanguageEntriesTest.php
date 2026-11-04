@@ -19,7 +19,7 @@ require_once \dirname(__DIR__, 2) . '/build/languages.php';
 /**
  * Every translated language file in src is listed in the manifest that ships it.
  *
- * @since  4.0.0
+ * @since  4.0.1
  */
 final class LanguageEntriesTest extends TestCase
 {
@@ -27,7 +27,7 @@ final class LanguageEntriesTest extends TestCase
      * A folder with a plugin in it, made for a test.
      *
      * @var    string
-     * @since  4.0.0
+     * @since  4.0.1
      */
     private string $fixture = '';
 
@@ -36,7 +36,7 @@ final class LanguageEntriesTest extends TestCase
      *
      * @return  void
      *
-     * @since   4.0.0
+     * @since   4.0.1
      */
     protected function tearDown(): void
     {
@@ -59,7 +59,7 @@ final class LanguageEntriesTest extends TestCase
      *
      * @return  void
      *
-     * @since   4.0.0
+     * @since   4.0.1
      */
     public function testEveryTranslatedFileIsListed(): void
     {
@@ -81,7 +81,7 @@ final class LanguageEntriesTest extends TestCase
      *
      * @return  void
      *
-     * @since   4.0.0
+     * @since   4.0.1
      */
     public function testTranslationsAreAddedOnce(): void
     {
@@ -129,7 +129,7 @@ final class LanguageEntriesTest extends TestCase
      *
      * @return  void
      *
-     * @since   4.0.0
+     * @since   4.0.1
      */
     public function testALanguagesFolderRelativeToSrc(): void
     {

@@ -51,6 +51,9 @@ its translations stay out of date without telling anyone.
 1. Download `pkg_translations-<version>.zip` from the
    [Releases page](https://github.com/joomla-projects/gsoc26_translator_feedback/releases) and
    install it in **System, Install, Extensions**. It installs the component and five plugins.
+   Their screens come in English and in German, Spanish, Persian, French, Italian, Dutch,
+   Brazilian and European Portuguese and Russian; Joomla installs the languages your site has.
+   These were translated by the package itself on guide.joomla.org, with that site's rules.
 2. Joomla installs plugins disabled, so enable them in **System, Manage, Plugins**:
    - **Content - Translations** keeps the queue in step with your content. It notices when an
      original is edited, adds the "no need for translation" toggle, preselects the source
